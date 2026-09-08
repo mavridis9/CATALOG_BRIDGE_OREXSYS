@@ -1,0 +1,39 @@
+<Window x:Class="CatalogBridge.ProductPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Επιλογή προϊόντος Orexsys"
+        Height="560" Width="640" WindowStartupLocation="CenterOwner">
+
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" x:Name="PromptText" TextWrapping="Wrap" Margin="0,0,0,10"
+                   FontWeight="Bold"/>
+
+        <TextBox Grid.Row="1" x:Name="SearchBox" Margin="0,0,0,8"
+                 TextChanged="SearchBox_TextChanged"/>
+
+        <DataGrid Grid.Row="2" x:Name="ProductsGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                  SelectionMode="Single" GridLinesVisibility="Horizontal"
+                  HeadersVisibility="Column" RowHeaderWidth="0"
+                  MouseDoubleClick="ProductsGrid_MouseDoubleClick">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Κωδικός" Binding="{Binding Code}" Width="110"/>
+                <DataGridTextColumn Header="Όνομα" Binding="{Binding Name}" Width="*"/>
+                <DataGridTextColumn Header="Κατηγορία" Binding="{Binding CategoryName}" Width="150"/>
+                <DataGridTextColumn Header="Τιμή" Binding="{Binding PriceText}" Width="70"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Άκυρο" Padding="12,6" Margin="0,0,8,0" Click="CancelButton_Click"/>
+            <Button x:Name="OkButton" Content="Επιλογή" Padding="12,6" FontWeight="Bold"
+                    Click="OkButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

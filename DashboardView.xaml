@@ -1,0 +1,160 @@
+<UserControl x:Class="CatalogBridge.DashboardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Grid Grid.Row="0" Margin="0,0,0,18">
+            <StackPanel>
+                <TextBlock Text="Πίνακας ελέγχου" FontSize="24" FontWeight="Bold"
+                           Foreground="{StaticResource InkBrush}"/>
+                <TextBlock x:Name="HeaderSubText" Text="Orexsys ↔ PointToOrder" FontSize="13"
+                           Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0"/>
+            </StackPanel>
+            <Button x:Name="RefreshButton" Content="Ανανέωση" Style="{StaticResource PrimaryButton}"
+                    HorizontalAlignment="Right" VerticalAlignment="Center" Click="RefreshButton_Click"/>
+        </Grid>
+
+        <!-- Stat cards -->
+        <UniformGrid Grid.Row="1" Columns="4" Margin="-7,0,-7,18">
+            <Border Style="{StaticResource Card}" Margin="7,0">
+                <StackPanel>
+                    <TextBlock Text="Συμφωνούν" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock x:Name="OkCount" Text="—" FontSize="34" FontWeight="Bold"
+                               Foreground="{StaticResource InkBrush}" Margin="0,4,0,2"/>
+                    <TextBlock Text="συνδεδεμένα και εντάξει" FontSize="12"
+                               Foreground="{StaticResource GoodBrush}"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="7,0">
+                <StackPanel>
+                    <TextBlock Text="Κρυφά online" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock x:Name="PriceCount" Text="—" FontSize="34" FontWeight="Bold"
+                               Foreground="{StaticResource InkBrush}" Margin="0,4,0,2"/>
+                    <TextBlock Text="ενεργά στο ταμείο, αόρατα online" FontSize="12"
+                               Foreground="{StaticResource WarnBrush}"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="7,0">
+                <StackPanel>
+                    <TextBlock Text="Χωρίς αντιστοίχιση" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock x:Name="UnmappedCount" Text="—" FontSize="34" FontWeight="Bold"
+                               Foreground="{StaticResource InkBrush}" Margin="0,4,0,2"/>
+                    <TextBlock Text="στο PointToOrder, χωρίς σύνδεση EFIC" FontSize="12"
+                               Foreground="{StaticResource BadBrush}"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Margin="7,0">
+                <StackPanel>
+                    <TextBlock Text="Για αποστολή" FontSize="13" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock x:Name="PushCount" Text="—" FontSize="34" FontWeight="Bold"
+                               Foreground="{StaticResource InkBrush}" Margin="0,4,0,2"/>
+                    <TextBlock Text="δεν υπάρχουν στο PointToOrder" FontSize="12"
+                               Foreground="{StaticResource AccentBrush}"/>
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+
+        <!-- Two columns: price differences + quick actions -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*"/>
+                <ColumnDefinition Width="2*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,9,0">
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                        <TextBlock Text="Κρυφά online" FontSize="16" FontWeight="SemiBold"
+                                   Foreground="{StaticResource InkBrush}"/>
+                        <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Hyperlink Click="OpenCompare_Click" Foreground="{StaticResource AccentBrush}"
+                                       TextDecorations="{x:Null}">Εμφάνιση όλων</Hyperlink>
+                        </TextBlock>
+                    </Grid>
+
+                    <TextBlock x:Name="NoDiffText" DockPanel.Dock="Top"
+                               Text="Πατήστε «Ανανέωση» για να γίνει η σύγκριση."
+                               Foreground="{StaticResource MutedBrush}" FontSize="13.5"/>
+
+                    <ItemsControl x:Name="DiffList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1"
+                                        Padding="2,10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="{Binding OrexsysName}" FontSize="14"
+                                                       Foreground="{StaticResource InkBrush}"/>
+                                            <TextBlock Text="{Binding PlatformName}" FontSize="12"
+                                                       Foreground="{StaticResource MutedBrush}"/>
+                                        </StackPanel>
+                                        <Border Grid.Column="2" Style="{StaticResource Pill}"
+                                                Background="{StaticResource WarnSoft}">
+                                            <TextBlock Text="{Binding PlatformStateText}" FontSize="12.5"
+                                                       Foreground="{StaticResource WarnBrush}" FontWeight="SemiBold"/>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource Card}" Margin="9,0,0,0">
+                <StackPanel>
+                    <TextBlock Text="Γρήγορες ενέργειες" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource InkBrush}" Margin="0,0,0,14"/>
+
+                    <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left" Margin="0,0,0,10" Padding="16,13"
+                            Click="OpenCompare_Click">
+                        <StackPanel>
+                            <TextBlock Text="Σύγκριση καταλόγων" FontSize="14.5" FontWeight="SemiBold"/>
+                            <TextBlock Text="Τι διαφέρει ανάμεσα σε Orexsys και PointToOrder"
+                                       FontSize="12" Foreground="{StaticResource MutedBrush}"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left" Margin="0,0,0,10" Padding="16,13"
+                            Click="OpenPush_Click">
+                        <StackPanel>
+                            <TextBlock Text="Αποστολή νέων προϊόντων" FontSize="14.5" FontWeight="SemiBold"/>
+                            <TextBlock Text="Στείλτε προϊόντα του Orexsys στο online μενού"
+                                       FontSize="12" Foreground="{StaticResource MutedBrush}"/>
+                        </StackPanel>
+                    </Button>
+
+                    <Button Style="{StaticResource SecondaryButton}" HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left" Padding="16,13"
+                            Click="OpenEfic_Click">
+                        <StackPanel>
+                            <TextBlock Text="Διόρθωση αντιστοιχίσεων" FontSize="14.5" FontWeight="SemiBold"/>
+                            <TextBlock Text="Ποιο προϊόν του Orexsys είναι ποιο στο PointToOrder"
+                                       FontSize="12" Foreground="{StaticResource MutedBrush}"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Status -->
+        <TextBlock Grid.Row="3" x:Name="StatusText" Margin="2,14,0,0" FontSize="13"
+                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                   Text="Δεν έχει γίνει σύγκριση ακόμα."/>
+    </Grid>
+</UserControl>

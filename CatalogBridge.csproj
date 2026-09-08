@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>CatalogBridge</AssemblyName>
+    <RootNamespace>CatalogBridge</RootNamespace>
+
+    <!-- The released version. Bump here, record it in CHANGELOG.md, then scripts/release.ps1
+         refuses to tag unless the three agree. Shown in the sidebar. -->
+    <Version>1.0.0</Version>
+    <Product>Γέφυρα Καταλόγου</Product>
+    <Company>Orexsys</Company>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+
+    <!-- SDK-style projects compile every *.cs under the folder; keep tests/docs/staging out. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;docs/**;scripts/**;deploy/**;publish/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FirebirdSql.Data.FirebirdClient" Version="9.1.1" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="7.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="7.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same rule as CustomerAdder: settings.ini follows the build locally but is never
+         published, so a fresh deploy can't inherit another site's DB or API credentials. -->
+    <None Update="settings.ini">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

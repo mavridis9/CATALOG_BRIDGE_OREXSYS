@@ -1,0 +1,26 @@
+; Παράδειγμα ρυθμίσεων για το CatalogBridge.
+; Αντιγράψτε το ως settings.ini δίπλα στο .exe και συμπληρώστε τιμές — ή, καλύτερα,
+; ανοίξτε την εφαρμογή και χρησιμοποιήστε την οθόνη «Ρυθμίσεις», που κρυπτογραφεί
+; τους κωδικούς για εσάς (DPAPI, δεμένους με αυτόν τον υπολογιστή).
+
+; --- Orexsys / Firebird ---
+Server=localhost
+Port=3050
+Database=C:\Orexsys\Your.FDB
+User=SYSDBA
+Password=
+Charset=WIN1253
+
+; --- PointToOrder API ---
+; Το ApiStoreId είναι ο αριθμητικός κωδικός καταστήματος (π.χ. 1007), όχι ο κωδικός
+; τύπου PO11521 που εμφανίζεται στο EFIC.STOREID.
+ApiBaseUrl=https://admin.point2order.gr
+ApiUsername=
+ApiPassword=
+ApiStoreId=
+
+; --- Τιμοκατάλογος ---
+; PriceListId: PRLD.PRLSID. Οι βάσεις που ελέγχθηκαν έχουν μία μόνο λίστα, την 1.
+; PriceSource: Delivery | TakeAway | Restaurant
+PriceListId=1
+PriceSource=Delivery

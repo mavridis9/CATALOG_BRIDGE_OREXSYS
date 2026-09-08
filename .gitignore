@@ -1,0 +1,25 @@
+# Build output
+bin/
+obj/
+publish/
+TestResults/
+
+# Local per-machine settings: Firebird + PointToOrder credentials (DPAPI-encrypted, PC-bound)
+settings.ini
+
+# Files the app writes next to the exe
+*.log
+
+# Deployment staging - built artifacts, not source
+deploy/
+*.zip
+*.pdb
+
+# Databases are never source
+*.FDB
+*.fdb
+
+# IDE
+.vs/
+*.user
+*.suo
