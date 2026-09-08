@@ -4,7 +4,7 @@ Read this before touching anything, then `README.md` (the detailed design notes 
 status note at its top: it predates the 01/09 price decision) and, for everything the two
 tools share — Orexsys schema facts, the PointToOrder API and its traps, the customer's
 business rules, safety rules — **`CLAUDE.md` in the sibling repo
-`mavridis9/CUSTOMER_TOOL_OREXSYS`** (`D:\Claude\CustomerAdder\CLAUDE.md` on the owner's
+`mavridis9/LIGHTHOUSE_TOOL`** (`D:\Claude\CustomerAdder\CLAUDE.md` on the owner's
 machine). That file is authoritative for shared facts; this one is only what is specific
 to the catalog bridge.
 
