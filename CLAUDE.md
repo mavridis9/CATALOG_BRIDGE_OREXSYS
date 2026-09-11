@@ -118,3 +118,43 @@ git-ignored and excluded from publish. The sidebar shows the version.
 - `README.md` sections on price differences describe the pre-01/09 behaviour.
 - Tests (added 08/09) cover `CatalogDiff` matching, classification and `Normalise` only;
   `OrexsysCatalog`, `EficRepository`, the API client and `StockSyncService` are untested.
+- **1.0.1 (11/09/2026): EFIC reads are store-scoped.** `EficRepository.ResolveStoreCode`
+  (Settings «Κωδ. EFIC», else `EFST`) filters every EFIC read — `OrexsysCatalog` links and
+  `EficRepository.LoadAsync` (Αντιστοιχίσεις, stock sync). Found when Stavros.FDB was pointed
+  at new store **1110** with `EficStoreCode` still `PO1007`: the leftover 01/09 `PO1007` row
+  for ΠΡΟΙΟΝ (ITMSID 200) hid it from the push. Switching a database to another store means
+  changing «Κωδ. EFIC» as well; `publish/settings.ini` now has `PO1110`.
+- **1.1.0 (11/09/2026): category choice + P2O-only EFST fallback.** `Settings.IncludesCategory`
+  (`SyncAllCategories`/`SyncCategoryIds`, picker `CategoryPickerWindow` over
+  `OrexsysCategories`) filters what Συγχρονισμός/Αποστολή/Πίνακας send; deactivations stay
+  category-blind. `ResolveStoreCode` falls back only to `EFST WHERE APPTYPE = 60 OR NAME
+  CONTAINING 'P2O'`; an empty code matches no EFIC row (never Wolt 28 / efood 6). STOA.FDB
+  (real customer, two businesses): price list 1 ΚΑΛΑΜΑΚΙ → 8 categories, list 2 ΣΤΟΑ → the rest.
+- **EFIC write fences (1.1.0).** Existing EFIC rows that are not ours — Wolt, efood, other P2O
+  stores — must never change. `EficRepository` enforces it (do not move these checks into
+  callers): `RequireOwnStoreCode` (never empty, never a non-P2O `EFSTID`), `STOREID`-constrained
+  UPDATE/DELETE with exact-row-count checks and rollback, per-database CSV backup of the whole
+  table before the first write. Proof harness result 11/09: 25/25, fingerprint unchanged.
+- **EFIC row shape (1.1.1).** An inserted row must look like one Orexsys makes for P2O (owner's
+  reference, 11/09): `STOREID` = EFST code, `CODE` = offerId, `NAME` = `SALESNAME` = platform
+  name, `ITMSID`, `ITMVID 0`, `CORRELATE 1`, everything else NULL, `EFICID`/`RECVER` from the
+  trigger. Earlier rows have `SALESNAME` NULL (harmless: triggers use it only for code-less
+  order lines); backfill only on the owner's say-so.
+- **Sizes (1.1.1).** ITMV = one global size list; a product's sizes = its active `PRLD` rows
+  with `ITMVID <> 0` (any list, as `GETITMSIZES`); `ITMVID 0` = its own price — every PRLD
+  join must pin it (`PRLD_UNQ_IDX` = PRLSID+ITMSID+ITMVID). Orders get their size only from
+  `EFIC.ITMVID` (`EFOD_BIUD_TRG`, `USEOREXSYSID = 0`). Two modes, owner decision 11/09
+  (`Settings.SizeMode`): **SeparateItems** (built) — `PushRules.PendingUnits` yields one
+  `PushUnit` per unlinked priced size (+ the product itself), each created as its own offer
+  and EFIC row with its ITMVID; `OrexsysProduct.LinkSizes` (code → ITMVID) makes the diff
+  pair every size offer. **OptionGroup** (not built) — one offer + a size option group with
+  surcharges; the owner accepts the till gets ITMVID 0 (size only as `EFOD.OPTIONS` text).
+  Read live on demo 1110: an option group is a CHILD category (min/max) nested in the offer,
+  each option an offer with its own offerId; API has createCategory CHILD / associate, plus
+  an Excel route. Demo/test store for P2O writes = 1110 only. Test DB with sizes: scratch
+  gbak copy of Stavros.
+- **«Σύνδεση P2O» dropdown (1.1.0).** Ρυθμίσεις no longer takes a typed EFIC code: it lists
+  `EficRepository.LoadConnectionsAsync` rows flagged P2O (one EFST line = one connection),
+  plus «καμία» and a flagged test code if one is saved. The path where a database *has* a P2O
+  line is untested live — no available DB has one (LIGHTHOUSE2 copy is gone; EFST must never
+  be written by this tool).

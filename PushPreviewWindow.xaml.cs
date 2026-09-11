@@ -11,14 +11,28 @@ namespace CatalogBridge
         public OrexsysProduct Product { get; init; } = null!;
         public string DisplayName { get; set; } = "";
 
-        public string Code => Product.Code;
-        public string OrexsysName => Product.Name;
-        public string PriceText => Product.Price is decimal p ? p.ToString("0.00") : "0.00";
+        // The size this item stands for (ITMV; 0 = the product itself) and the price that
+        // goes with it - one plan item per size when sizes are sent as separate products.
+        public long ItmvId { get; init; }
+        public string SizeName { get; init; } = "";
+        public decimal Price { get; init; }
 
-        // What actually gets sent: the edited name, falling back to the POS name if the
-        // field was emptied.
+        public static PushPlanItem From(PushUnit unit) => new()
+        {
+            Product = unit.Product, ItmvId = unit.ItmvId, SizeName = unit.SizeName,
+            Price = unit.Price, DisplayName = unit.DefaultName,
+        };
+
+        public string Code => Product.Code;
+        public string OrexsysName => SizeName.Length > 0 ? $"{Product.Name} ({SizeName})" : Product.Name;
+        public string PriceText => Price.ToString("0.00");
+
+        // What actually gets sent: the edited name, falling back to the POS name (plus size)
+        // if the field was emptied.
         public string FinalName =>
-            string.IsNullOrWhiteSpace(DisplayName) ? Product.Name : DisplayName.Trim();
+            string.IsNullOrWhiteSpace(DisplayName)
+                ? (SizeName.Length > 0 && ItmvId != 0 ? $"{Product.Name} {SizeName}" : Product.Name)
+                : DisplayName.Trim();
     }
 
     // A category that does not exist on PointToOrder yet. The user chooses what it will be

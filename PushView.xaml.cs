@@ -24,6 +24,15 @@ namespace CatalogBridge
             public string Name => Product.Name;
             public string PriceText => Product.Price is decimal p ? p.ToString("0.00") : "—";
             public string StateText => Product.IsActive ? "Ενεργό" : "Ανενεργό";
+
+            // What is still to be sent for this product: with sizes as separate items, each
+            // pending size; ⏸ when the product waits for the option-group mode (PushRules).
+            public List<PushUnit> Units { get; init; } = new();
+            public bool Held { get; init; }
+            public string SizesText =>
+                !Product.HasSizes ? "" :
+                Held ? "⏸ " + Product.SizesText :
+                string.Join(" · ", Units.Select(u => $"{u.SizeName} {u.Price:0.00}"));
         }
 
         private List<PushItem> unmapped = new();
@@ -66,18 +75,25 @@ namespace CatalogBridge
                 using var api = new PointToOrderApiClient(settings);
                 platform = await api.GetCatalogAsync();
 
-                storeCode = settings.EficStoreCode;
-                if (storeCode.Length == 0)
-                    storeCode = await EficRepository.LoadStoreCodeAsync(settings);
+                // Validated: empty if the configured code belongs to Wolt / efood.
+                storeCode = await EficRepository.LoadStoreCodeAsync(settings);
 
                 // Extras (ITMC.ISEXTRA=1) are excluded outright: they are modifiers riding on
                 // another item's line, not products, and must never become platform offers.
                 int extrasExcluded = orexsys.Products
                     .Count(p => p.ExternalCodes.Count == 0 && p.IsExtra);
 
+                // Everything with something still to create on PointToOrder (PushRules): a
+                // product with no link, or a size of a product that has no link yet; plus the
+                // held-back ones, listed so they are not simply missing.
                 unmapped = orexsys.Products
-                    .Where(p => p.ExternalCodes.Count == 0 && !p.IsExtra)
-                    .Select(p => new PushItem { Product = p })
+                    .Select(p => new PushItem
+                    {
+                        Product = p,
+                        Units = PushRules.PendingUnits(p, settings),
+                        Held = PushRules.IsHeldForSizes(p, settings),
+                    })
+                    .Where(i => i.Units.Count > 0 || i.Held)
                     .ToList();
 
                 ApplyFilter();
@@ -145,12 +161,20 @@ namespace CatalogBridge
         {
             if (platform == null) return;
 
-            var selected = ProductsGrid.SelectedItems.OfType<PushItem>()
-                .Select(i => i.Product).ToList();
+            var picked = ProductsGrid.SelectedItems.OfType<PushItem>().ToList();
+
+            // Held-back products (sizes in option-group mode, not built yet) cannot be sent.
+            var withSizes = picked.Where(i => i.Held).Select(i => i.Product).ToList();
+            var selectedItems = picked.Where(i => !i.Held && i.Units.Count > 0).ToList();
+            var selected = selectedItems.Select(i => i.Product).ToList();
 
             if (selected.Count == 0)
             {
-                ShowStatus("Επιλέξτε πρώτα ένα ή περισσότερα προϊόντα.", Warn);
+                ShowStatus(withSizes.Count > 0
+                    ? $"Τα επιλεγμένα προϊόντα έχουν μεγέθη ({string.Join(", ", withSizes.Take(4).Select(p => p.Name))}) " +
+                      "— η επιλογή «ένα προϊόν με επιλογές» δεν είναι έτοιμη ακόμα. Με «ξεχωριστά " +
+                      "προϊόντα» στις Ρυθμίσεις στέλνονται τώρα."
+                    : "Επιλέξτε πρώτα ένα ή περισσότερα προϊόντα.", Warn);
                 return;
             }
 
@@ -176,8 +200,10 @@ namespace CatalogBridge
             // The review step: PointToOrder is what the customer reads, so every product name
             // is editable before it is sent, and every category about to be created asks for
             // its PointToOrder name (e.g. «OREXSYS»). Nothing is created until «Αποστολή» there.
-            var plans = selected
-                .Select(p => new PushPlanItem { Product = p, DisplayName = p.Name })
+            // One plan item per unit: the product, or each of its sizes as a separate item.
+            var plans = selectedItems
+                .SelectMany(i => i.Units)
+                .Select(PushPlanItem.From)
                 .ToList();
 
             var categoryPlans = selected
@@ -241,7 +267,7 @@ namespace CatalogBridge
                             api, categoriesByName, targetCategory);
 
                         var offer = await api.CreateOfferAsync(
-                            platform.CatalogId, categoryId, displayName, product.Price ?? 0m);
+                            platform.CatalogId, categoryId, displayName, plan.Price);
 
                         if (offer.Id == 0)
                             throw new PointToOrderException(
@@ -256,7 +282,8 @@ namespace CatalogBridge
                         try
                         {
                             await EficRepository.InsertAsync(
-                                settings, storeCode, offer.Id, displayName, product.ItmsId);
+                                settings, storeCode, offer.Id, displayName, product.ItmsId,
+                                plan.ItmvId);
                         }
                         catch (Exception ex)
                         {
@@ -286,8 +313,13 @@ namespace CatalogBridge
             ApplyFilter();
 
             var report = new StringBuilder();
-            report.Append($"Δημιουργήθηκαν {created} από {selected.Count} προϊόντα" +
+            report.Append($"Δημιουργήθηκαν {created} από {plans.Count} προϊόντα" +
                           (makeVisible ? " (ορατά)." : " (κρυφά)."));
+
+            if (withSizes.Count > 0)
+                report.Append($"\n⏸ Δεν στάλθηκαν {withSizes.Count} προϊόντα με μεγέθη " +
+                              $"({string.Join(", ", withSizes.Take(4).Select(p => p.Name))}" +
+                              $"{(withSizes.Count > 4 ? ", ..." : "")}) — «ένα προϊόν με επιλογές» δεν είναι έτοιμο ακόμα.");
 
             if (eficFailures.Count > 0)
             {

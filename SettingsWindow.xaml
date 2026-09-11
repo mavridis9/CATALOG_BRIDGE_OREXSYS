@@ -128,15 +128,35 @@
                                Style="{StaticResource FieldLabel}"/>
                     <ComboBox  Grid.Row="1" Grid.Column="1" x:Name="PriceSourceCombo" Margin="0,4"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Κωδ. EFIC"
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Σύνδεση P2O"
                                Style="{StaticResource FieldLabel}"
-                               ToolTip="Ο κωδικός καταστήματος για νέες γραμμές EFIC (π.χ. PO11521)."/>
-                    <TextBox   Grid.Row="2" Grid.Column="1" x:Name="EficStoreBox" Margin="0,4"
-                               ToolTip="Αφήστε κενό για αυτόματη ανάγνωση από τον πίνακα EFST. Σε νέα εγκατάσταση (κενό EFST) συμπληρώστε τον κωδικό που δίνει το PointToOrder, π.χ. PO11521."/>
+                               ToolTip="Η γραμμή του πίνακα EFST (μία γραμμή = μία σύνδεση) που αντιστοιχεί στο PointToOrder."/>
+                    <ComboBox  Grid.Row="2" Grid.Column="1" x:Name="EficConnectionCombo" Margin="0,4"
+                               DisplayMemberPath="Label" SelectionChanged="EficConnectionCombo_SelectionChanged"
+                               ToolTip="Εμφανίζονται μόνο οι συνδέσεις PointToOrder του EFST — ποτέ Wolt ή efood."/>
                 </Grid>
+
+                <TextBlock x:Name="EficHintText" TextWrapping="Wrap" Margin="0,6,0,0" FontSize="12"
+                           Foreground="#5B6572"
+                           Text="Η λίστα συνδέσεων γεμίζει μόλις είναι διαθέσιμη η βάση (ή με «Έλεγχος βάσης»)."/>
 
                 <TextBlock TextWrapping="Wrap" Margin="0,10,0,0" Foreground="#5B6572" FontSize="12"
                            Text="Το Orexsys κρατά χωριστές τιμές delivery, take away και καταστήματος (πίνακας PRLD). Στις βάσεις που ελέγχθηκαν η τιμή καταστήματος είναι σχεδόν πάντα κενή, ενώ delivery και take away ταυτίζονται — γι' αυτό η προεπιλογή είναι «Delivery»."/>
+
+                <TextBlock Text="Κατηγορίες προς συγχρονισμό" Style="{StaticResource SectionHeader}"/>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="CategorySummaryText" Text="Όλες" VerticalAlignment="Center"
+                               FontWeight="SemiBold"/>
+                    <Button Content="Επιλογή κατηγοριών..." Padding="12,4" Margin="14,0,0,0"
+                            Click="ChooseCategoriesButton_Click"/>
+                </StackPanel>
+                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5B6572" FontSize="12"
+                           Text="Ποιες κατηγορίες του Orexsys στέλνει ο Συγχρονισμός. Ορίστε πρώτα τη βάση και τον τιμοκατάλογο — η λίστα δείχνει πόσα προϊόντα κάθε κατηγορίας έχουν τιμή σε αυτόν."/>
+
+                <TextBlock Text="Προϊόντα με μεγέθη" Style="{StaticResource SectionHeader}"/>
+                <ComboBox x:Name="SizeModeCombo" Margin="0,2" DisplayMemberPath="Label"/>
+                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5B6572" FontSize="12"
+                           Text="Ξεχωριστά προϊόντα: κάθε μέγεθος γίνεται δικό του προϊόν στο PointToOrder («ΤΟΣΤ», «ΤΟΣΤ XL») και η παραγγελία φτάνει στο ταμείο με το μέγεθος. Ένα προϊόν με επιλογές: μία ομάδα επιλογών μεγέθους με επιβάρυνση — το ταμείο παίρνει το προϊόν χωρίς μέγεθος (δεν είναι έτοιμο ακόμα)."/>
 
                 <TextBlock Text="Απόθεμα" Style="{StaticResource SectionHeader}"/>
                 <CheckBox x:Name="StockSyncCheck" Margin="0,2"

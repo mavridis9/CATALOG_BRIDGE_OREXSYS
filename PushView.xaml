@@ -59,6 +59,7 @@
                     <DataGridTextColumn Header="Κωδικός" Binding="{Binding Code}" Width="120"/>
                     <DataGridTextColumn Header="Όνομα" Binding="{Binding Name}" Width="*"/>
                     <DataGridTextColumn Header="Τιμή" Binding="{Binding PriceText}" Width="85"/>
+                    <DataGridTextColumn Header="Μεγέθη" Binding="{Binding SizesText}" Width="200"/>
                     <DataGridTextColumn Header="Κατάσταση POS" Binding="{Binding StateText}" Width="120"/>
                 </DataGrid.Columns>
             </DataGrid>

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -24,10 +25,20 @@ namespace CatalogBridge
             public override string ToString() => Label;
         }
 
+        private class EficConnectionOption
+        {
+            public string Code { get; init; } = "";
+            public string Label { get; init; } = "";
+        }
+
         public SettingsWindow()
         {
             InitializeComponent();
             LoadIntoForm();
+
+            // The PointToOrder connections live in the database, so they are read as soon as
+            // the window is up rather than making the technician press «Έλεγχος βάσης» first.
+            Loaded += async (s, e) => await RefreshEficConnectionsAsync(BuildFromForm());
         }
 
         private void LoadIntoForm()
@@ -68,9 +79,26 @@ namespace CatalogBridge
             };
             PriceListCombo.SelectedIndex = 0;
 
-            EficStoreBox.Text = settings.EficStoreCode;
+            // Same idea for the PointToOrder connection: the saved code is shown at once and the
+            // real EFST lines replace it as soon as the database answers.
+            savedEficCode = settings.EficStoreCode;
+            EficConnectionCombo.ItemsSource = savedEficCode.Length > 0
+                ? new List<EficConnectionOption> { new() { Code = savedEficCode, Label = savedEficCode } }
+                : new List<EficConnectionOption>();
+            EficConnectionCombo.SelectedIndex = savedEficCode.Length > 0 ? 0 : -1;
 
             StockSyncCheck.IsChecked = settings.StockSyncEnabled;
+
+            SizeModeCombo.ItemsSource = new List<SizeModeOption>
+            {
+                new() { Value = SizeMode.SeparateItems, Label = "Ξεχωριστά προϊόντα ανά μέγεθος (προτείνεται)" },
+                new() { Value = SizeMode.OptionGroup, Label = "Ένα προϊόν με επιλογές μεγέθους (δεν είναι έτοιμο ακόμα)" },
+            };
+            SizeModeCombo.SelectedIndex = settings.SizeMode == SizeMode.OptionGroup ? 1 : 0;
+
+            syncAllCategories = settings.SyncAllCategories;
+            syncCategoryIds = Settings.ParseIdSet(settings.SyncCategoryIds);
+            UpdateCategorySummary();
             ShowDashboardCheck.IsChecked = settings.ShowDashboard;
             ShowCompareCheck.IsChecked = settings.ShowCompare;
             ShowPushCheck.IsChecked = settings.ShowPush;
@@ -107,13 +135,156 @@ namespace CatalogBridge
             ApiStoreId = ApiStoreBox.Text.Trim(),
             PriceListId = (PriceListCombo.SelectedItem as PriceListOption)?.Id ?? 1,
             PriceSource = (PriceSourceCombo.SelectedItem as PriceSourceOption)?.Value ?? PriceSource.Delivery,
-            EficStoreCode = EficStoreBox.Text.Trim(),
+            EficStoreCode = (EficConnectionCombo.SelectedItem as EficConnectionOption)?.Code ?? "",
             StockSyncEnabled = StockSyncCheck.IsChecked == true,
+            SizeMode = (SizeModeCombo.SelectedItem as SizeModeOption)?.Value ?? SizeMode.SeparateItems,
+            SyncAllCategories = syncAllCategories,
+            SyncCategoryIds = string.Join(",", syncCategoryIds.OrderBy(id => id)),
             ShowDashboard = ShowDashboardCheck.IsChecked == true,
             ShowCompare = ShowCompareCheck.IsChecked == true,
             ShowPush = ShowPushCheck.IsChecked == true,
             ShowEfic = ShowEficCheck.IsChecked == true,
         };
+
+        private string savedEficCode = "";
+
+        private class SizeModeOption
+        {
+            public SizeMode Value { get; init; }
+            public string Label { get; init; } = "";
+        }
+
+        // Offers ONLY the PointToOrder lines of EFST (one line per platform connection) - Wolt
+        // and efood lines are never selectable. A saved code that is not an EFST line (the
+        // sandbox stores run on PO1007 / PO1110) stays as its own entry so saving the form does
+        // not silently drop it, but it is flagged: real PointToOrder orders will not match it.
+        private async Task RefreshEficConnectionsAsync(Settings settings)
+        {
+            if (!settings.IsDatabaseConfigured) return;
+
+            List<EficRepository.EfstConnection> connections;
+            try
+            {
+                connections = await EficRepository.LoadConnectionsAsync(settings);
+            }
+            catch (Exception ex)
+            {
+                EficHintText.Foreground = Warn;
+                EficHintText.Text = "Δεν ήταν δυνατή η ανάγνωση των συνδέσεων (EFST): " + ex.Message;
+                return;
+            }
+
+            string current = (EficConnectionCombo.SelectedItem as EficConnectionOption)?.Code ?? savedEficCode;
+            var pointToOrder = connections.Where(c => c.IsPointToOrder).ToList();
+
+            // «Καμία» first: clearing the choice must always be possible, and it is safe -
+            // with no code the app writes nothing to EFIC at all.
+            var options = new List<EficConnectionOption>
+            {
+                new() { Code = "", Label = "— καμία (δεν γράφεται τίποτα στο EFIC) —" },
+            };
+            options.AddRange(pointToOrder.Select(c => new EficConnectionOption
+            {
+                Code = c.EfstId,
+                Label = $"{c.EfstId} — {(c.Name.Length > 0 ? c.Name : "PointToOrder")}" +
+                        (c.Remarks.Length > 0 ? $" ({c.Remarks})" : ""),
+            }));
+
+            if (current.Length > 0 && !pointToOrder.Any(c => c.EfstId == current))
+                options.Add(new EficConnectionOption
+                {
+                    Code = current,
+                    Label = $"{current} — χωρίς γραμμή στο EFST (μόνο για δοκιμές)",
+                });
+
+            eficConnections = connections;
+            EficConnectionCombo.ItemsSource = options;
+            EficConnectionCombo.SelectedItem =
+                options.FirstOrDefault(o => o.Code == current && current.Length > 0) ??
+                (pointToOrder.Count == 1 ? options[1] : options[0]);
+
+            UpdateEficHint();
+        }
+
+        private List<EficRepository.EfstConnection>? eficConnections;
+
+        private void EficConnectionCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+            UpdateEficHint();
+
+        // Describes what the CURRENT choice will do - so the warning is never out of step with
+        // the dropdown.
+        private void UpdateEficHint()
+        {
+            if (eficConnections == null) return;
+
+            string selected = (EficConnectionCombo.SelectedItem as EficConnectionOption)?.Code ?? "";
+            var pointToOrder = eficConnections.Where(c => c.IsPointToOrder).ToList();
+            string others = string.Join(", ", eficConnections
+                .Where(c => !c.IsPointToOrder && c.Name.Length > 0)
+                .Select(c => c.Name));
+            string noP2O = "Η βάση δεν έχει σύνδεση PointToOrder στο EFST" +
+                           (others.Length > 0 ? $" (υπάρχουν μόνο: {others})" : "") + ".";
+
+            if (selected.Length == 0)
+            {
+                EficHintText.Foreground = Warn;
+                EficHintText.Text = pointToOrder.Count == 0
+                    ? noP2O + " Δημιουργήστε πρώτα τη σύνδεση στο Orexsys — μέχρι τότε η Αποστολή " +
+                      "δεν γράφει τίποτα στο EFIC."
+                    : "Επιλέξτε τη σύνδεση PointToOrder — χωρίς αυτήν η Αποστολή δεν γράφει τίποτα στο EFIC.";
+            }
+            else if (!pointToOrder.Any(c => c.EfstId == selected))
+            {
+                EficHintText.Foreground = Warn;
+                EficHintText.Text =
+                    $"Ο «{selected}» είναι κωδικός δοκιμών, όχι σύνδεση του EFST: η Αποστολή γράφει κάτω " +
+                    "από αυτόν, αλλά οι online παραγγελίες δεν θα ταιριάζουν με τα προϊόντα. " +
+                    (pointToOrder.Count == 0
+                        ? noP2O + " Για πραγματικό κατάστημα δημιουργήστε πρώτα τη σύνδεση στο Orexsys."
+                        : "Για πραγματικό κατάστημα επιλέξτε τη σύνδεση PointToOrder.");
+            }
+            else
+            {
+                EficHintText.Foreground = Muted;
+                EficHintText.Text =
+                    $"Σύνδεση PointToOrder από το EFST." +
+                    (others.Length > 0
+                        ? $" Οι υπόλοιπες ({others}) δεν εμφανίζονται — το πρόγραμμα δεν τις αγγίζει ποτέ."
+                        : "");
+            }
+        }
+
+        // The category choice lives here until Αποθήκευση, like every other field on the form.
+        private bool syncAllCategories = true;
+        private HashSet<long> syncCategoryIds = new();
+
+        private void ChooseCategoriesButton_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildFromForm();
+            if (!settings.IsDatabaseConfigured)
+            {
+                ShowStatus("Συμπληρώστε πρώτα τη σύνδεση με τη βάση Orexsys.", Warn);
+                return;
+            }
+
+            var picker = new CategoryPickerWindow(settings, syncAllCategories, syncCategoryIds)
+            {
+                Owner = this,
+            };
+            if (picker.ShowDialog() != true) return;
+
+            syncAllCategories = picker.AllSelected;
+            syncCategoryIds = picker.SelectedIds;
+            UpdateCategorySummary();
+        }
+
+        private void UpdateCategorySummary()
+        {
+            CategorySummaryText.Text =
+                syncAllCategories ? "Όλες (και όσες προστεθούν αργότερα)" :
+                syncCategoryIds.Count == 0 ? "Καμία — ο Συγχρονισμός δεν στέλνει νέα προϊόντα" :
+                $"{syncCategoryIds.Count} επιλεγμένες";
+        }
 
         private void BrowseButton_Click(object sender, RoutedEventArgs e)
         {
@@ -142,7 +313,7 @@ namespace CatalogBridge
 
             try
             {
-                int productCount = await System.Threading.Tasks.Task.Run(() =>
+                int productCount = await Task.Run(() =>
                 {
                     using var connection = new FbConnection(settings.ToConnectionString());
                     connection.Open();
@@ -169,6 +340,8 @@ namespace CatalogBridge
                     PriceListCombo.SelectedItem =
                         options.FirstOrDefault(o => o.Id == previous) ?? options[0];
                 }
+
+                await RefreshEficConnectionsAsync(settings);
 
                 ShowStatus($"Επιτυχής σύνδεση. {productCount} προϊόντα, " +
                            $"{lists.Count} τιμοκατάλογος/οι.", Good);
@@ -247,6 +420,7 @@ namespace CatalogBridge
         private void CancelButton_Click(object sender, RoutedEventArgs e) => Close();
 
         private static readonly Brush Normal = Brushes.Black;
+        private static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(0x5B, 0x65, 0x72));
         private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(0x2F, 0x6C, 0x43));
         private static readonly Brush Warn = new SolidColorBrush(Color.FromRgb(0x8A, 0x5A, 0x1B));
         private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(0xA6, 0x3A, 0x22));

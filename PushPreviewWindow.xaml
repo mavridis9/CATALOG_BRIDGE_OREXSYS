@@ -75,10 +75,17 @@
             </DataGrid>
         </Border>
 
+        <!-- Text and buttons in separate columns: in one cell a long summary ran on under
+             the buttons and its end («... με μεγέθη δεν στέλνονται ακόμα») was hidden. -->
         <Grid Grid.Row="3" Margin="0,14,0,0">
-            <TextBlock x:Name="SummaryText" VerticalAlignment="Center" FontSize="13"
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="SummaryText" VerticalAlignment="Center" FontSize="13" Margin="0,0,16,0"
                        Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right"
+                        VerticalAlignment="Center">
                 <Button Content="Άκυρο" Style="{StaticResource SecondaryButton}" MinWidth="100"
                         Margin="0,0,10,0" Click="CancelButton_Click"/>
                 <Button Content="Αποστολή" Style="{StaticResource PrimaryButton}" MinWidth="130"

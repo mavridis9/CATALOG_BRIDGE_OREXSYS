@@ -34,7 +34,14 @@ namespace CatalogBridge
         public string Category =>
             Orexsys?.CategoryName is { Length: > 0 } c ? c : (Offer?.CategoryName ?? "");
 
-        public string OrexsysName => Orexsys?.Name ?? "";
+        // The size this row is about, when the pair is one size of a product sent as separate
+        // items («ΤΟΣΤ ΖΑΜΠΟΝ ΚΑΣΕΡΙ (XL)»); EFIC.ITMVID via the matched code.
+        public string SizeName =>
+            Orexsys == null || Offer == null || MatchedBy != MatchKind.ByCode ? ""
+            : Orexsys.SizeName(Orexsys.SizeOfCode(Offer.OfferId.ToString()));
+
+        public string OrexsysName =>
+            Orexsys == null ? "" : SizeName.Length > 0 ? $"{Orexsys.Name} ({SizeName})" : Orexsys.Name;
         public string PlatformName => Offer?.Name ?? "";
         public string OrexsysCode => Orexsys?.Code ?? "";
 
@@ -121,26 +128,24 @@ namespace CatalogBridge
                 if (product.IsExtra && product.ExternalCodes.Count == 0)
                     continue;
 
-                CatalogOffer? match = null;
+                // A product sent as separate items per size has several codes, one per size
+                // (ITMVID in EFIC): every one of them that exists online is its own row, so a
+                // size switched off at the till is switched off online too, not just the
+                // first one found.
+                bool matched = false;
 
                 foreach (string code in product.ExternalCodes)
                 {
                     if (offersByCode.TryGetValue(code, out var candidate) && !takenOffers.Contains(candidate))
                     {
-                        match = candidate;
-                        break;
+                        takenOffers.Add(candidate);
+                        pairs.Add((product, candidate, MatchKind.ByCode));
+                        matched = true;
                     }
                 }
 
-                if (match != null)
-                {
-                    takenOffers.Add(match);
-                    pairs.Add((product, match, MatchKind.ByCode));
-                }
-                else
-                {
+                if (!matched)
                     pairs.Add((product, null, MatchKind.None));
-                }
             }
 
             // Pass 2 - fall back to normalised names for whatever is left over. Greek names are

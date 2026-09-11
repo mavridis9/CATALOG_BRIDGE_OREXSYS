@@ -1,0 +1,67 @@
+<Window x:Class="CatalogBridge.CategoryPickerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Κατηγορίες προς συγχρονισμό"
+        Height="620" Width="600" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource AppBg}" FontFamily="Segoe UI">
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock Text="Ποιες κατηγορίες στέλνονται στο PointToOrder;" FontSize="18"
+                       FontWeight="Bold" Foreground="{StaticResource InkBrush}"/>
+            <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource MutedBrush}"
+                       Margin="0,4,0,0"
+                       Text="Ο Συγχρονισμός στέλνει νέα προϊόντα μόνο από τις επιλεγμένες κατηγορίες. Αν μείνουν όλες επιλεγμένες, στέλνονται και κατηγορίες που θα προστεθούν αργότερα στο Orexsys. Τα extras δεν εμφανίζονται — δεν στέλνονται ποτέ."/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+            <Button Content="Όλες" Style="{StaticResource SecondaryButton}" Padding="14,6"
+                    Margin="0,0,8,0" Click="AllButton_Click"/>
+            <Button Content="Καμία" Style="{StaticResource SecondaryButton}" Padding="14,6"
+                    Click="NoneButton_Click"/>
+        </StackPanel>
+
+        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="CategoryList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="2,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                          VerticalAlignment="Center" FontSize="13.5">
+                                    <TextBlock Text="{Binding Name}" Foreground="{StaticResource InkBrush}"/>
+                                </CheckBox>
+                                <TextBlock Grid.Column="1" Text="{Binding CountsText}" FontSize="12"
+                                           VerticalAlignment="Center" Margin="12,0,0,0"
+                                           Foreground="{Binding CountsBrush}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <Grid Grid.Row="3" Margin="0,12,0,0">
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="12"
+                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                       Margin="0,0,230,0" Text="Φόρτωση κατηγοριών..."/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Άκυρο" Style="{StaticResource SecondaryButton}" MinWidth="95"
+                        Margin="0,0,10,0" Click="CancelButton_Click"/>
+                <Button x:Name="OkButton" Content="Εντάξει" Style="{StaticResource PrimaryButton}"
+                        MinWidth="110" IsEnabled="False" Click="OkButton_Click"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

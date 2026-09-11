@@ -67,12 +67,12 @@ namespace CatalogBridge
                 OkCount.Text = diff.CountOf(DiffStatus.Identical).ToString();
                 PriceCount.Text = diff.CountOf(DiffStatus.HiddenOnline).ToString();
                 UnmappedCount.Text = diff.CountOf(DiffStatus.PlatformOnly).ToString();
-                // Same rule as the sync/push list, so this number is exactly what one press
-                // of «Συγχρονισμός» would send - internal rows (SYSTEM) and unpriced/inactive
-                // items are not candidates and must not be counted.
+                // Same rule as the sync (PushRules), so this number is exactly what one press
+                // of «Συγχρονισμός» would create - a product with sizes sent as separate items
+                // counts once per size; internal rows (SYSTEM), unpriced/inactive items and
+                // held-back products are not counted.
                 PushCount.Text = orexsys.Products
-                    .Count(p => p.ExternalCodes.Count == 0 && !p.IsExtra &&
-                                p.IsActive && p.HasPrice).ToString();
+                    .Sum(p => PushRules.SendableUnits(p, settings).Count).ToString();
 
                 var hidden = diff.Rows
                     .Where(r => r.Status == DiffStatus.HiddenOnline)

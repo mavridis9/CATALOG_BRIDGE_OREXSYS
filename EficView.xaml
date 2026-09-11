@@ -59,6 +59,7 @@
                     <DataGridTextColumn Header="Προϊόν PointToOrder" Binding="{Binding PlatformText}" Width="*"/>
                     <DataGridTextColumn Header="Κωδ. Orexsys" Binding="{Binding OrexsysCode}" Width="115"/>
                     <DataGridTextColumn Header="Προϊόν Orexsys" Binding="{Binding OrexsysName}" Width="*"/>
+                    <DataGridTextColumn Header="Μέγεθος" Binding="{Binding SizeText}" Width="90"/>
                 </DataGrid.Columns>
             </DataGrid>
         </Border>

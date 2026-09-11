@@ -13,6 +13,8 @@ namespace CatalogBridge
     // those two items, but it is a real business decision so it stays configurable.
     public enum PriceSource { Delivery, TakeAway, Restaurant }
 
+    public enum SizeMode { SeparateItems, OptionGroup }
+
     public class Settings
     {
         private const string EncryptedPrefix = "ENC:";
@@ -50,6 +52,40 @@ namespace CatalogBridge
         // Push the till's remaining-quantity counters (SCRB.REMAIN) to PointToOrder as
         // stockLevel, automatically every 5 minutes while the app is open.
         public bool StockSyncEnabled { get; init; }
+
+        // Which Orexsys categories (ITMC.ITMCID) the sync may send to PointToOrder. "All" also
+        // covers categories created in Orexsys later; a chosen subset sends only those, so a
+        // new category stays off the web menu until a technician ticks it. Only governs what
+        // is SENT - an already-linked product switched off at the till is still switched off
+        // online whatever its category, because that mismatch loses money.
+        public bool SyncAllCategories { get; init; } = true;
+        public string SyncCategoryIds { get; init; } = "";
+
+        // How a product with sizes (PRLD rows per ITMVID) is sent to PointToOrder — owner
+        // decision 11/09/2026, both must exist:
+        //  SeparateItems: one offer per size («ΤΟΣΤ», «ΤΟΣΤ XL»), each with its own offerId and
+        //                 its own EFIC row carrying the ITMVID - the size reaches the till.
+        //  OptionGroup:   one offer at the base price plus an option group («ΕΠΙΛΕΞΤΕ ΜΕΓΕΘΟΣ»)
+        //                 with the surcharge per size; the till gets ITMVID 0 and the size only
+        //                 as text in EFOD.OPTIONS (accepted by the owner). Not built yet.
+        public SizeMode SizeMode { get; init; } = SizeMode.SeparateItems;
+
+        private HashSet<long>? syncCategories;
+
+        public bool IncludesCategory(long itmcId)
+        {
+            if (SyncAllCategories) return true;
+            syncCategories ??= ParseIdSet(SyncCategoryIds);
+            return syncCategories.Contains(itmcId);
+        }
+
+        public static HashSet<long> ParseIdSet(string value)
+        {
+            var ids = new HashSet<long>();
+            foreach (string part in (value ?? "").Split(','))
+                if (long.TryParse(part.Trim(), out long id) && id >= 0) ids.Add(id);
+            return ids;
+        }
 
         // Which technician screens the sidebar shows. The end user sees only «Αρχική» (the
         // one-button sync); technicians enable what they need from the Settings screen.
@@ -110,6 +146,10 @@ namespace CatalogBridge
                     ? ps : PriceSource.Delivery,
                 EficStoreCode = Get("EficStoreCode", ""),
                 StockSyncEnabled = Get("StockSyncEnabled", "false") == "true",
+                SyncAllCategories = Get("SyncAllCategories", "true") != "false",
+                SyncCategoryIds = Get("SyncCategoryIds", ""),
+                SizeMode = Enum.TryParse(Get("SizeMode", "SeparateItems"), true, out SizeMode sm)
+                    ? sm : SizeMode.SeparateItems,
                 ShowDashboard = Get("ShowDashboard", "false") == "true",
                 ShowCompare = Get("ShowCompare", "false") == "true",
                 ShowPush = Get("ShowPush", "false") == "true",
@@ -150,6 +190,15 @@ namespace CatalogBridge
                 "",
                 "; Αυτόματη αποστολή υπολοίπων (SCRB) στο PointToOrder κάθε 5 λεπτά.",
                 $"StockSyncEnabled={(settings.StockSyncEnabled ? "true" : "false")}",
+                "",
+                "; Κατηγορίες Orexsys (ITMCID) που στέλνονται. SyncAllCategories=true: όλες,",
+                "; και όσες προστεθούν αργότερα. Ορίζονται από τις Ρυθμίσεις της εφαρμογής.",
+                $"SyncAllCategories={(settings.SyncAllCategories ? "true" : "false")}",
+                $"SyncCategoryIds={settings.SyncCategoryIds}",
+                "",
+                "; Προϊόντα με μεγέθη (ITMV): SeparateItems = ένα προϊόν P2O ανά μέγεθος,",
+                "; OptionGroup = ένα προϊόν με ομάδα επιλογών μεγέθους (το ταμείο δεν παίρνει μέγεθος).",
+                $"SizeMode={settings.SizeMode}",
                 "",
                 "; Οθόνες τεχνικού (true = εμφανίζονται στο πλάι).",
                 $"ShowDashboard={(settings.ShowDashboard ? "true" : "false")}",

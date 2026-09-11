@@ -66,8 +66,21 @@ namespace CatalogBridge
 
                 // --- what needs doing -------------------------------------------------------
                 var newProducts = orexsys.Products
-                    .Where(p => p.ExternalCodes.Count == 0 && !p.IsExtra && p.IsActive && p.HasPrice)
+                    .Where(p => PushRules.IsSendable(p, settings))
                     .ToList();
+
+                // Products with sizes wait while «ένα προϊόν με επιλογές» is not built yet - see
+                // PushRules. Named in the report so nobody wonders why they are missing online.
+                var heldForSizes = orexsys.Products
+                    .Where(p => PushRules.IsHeldForSizes(p, settings))
+                    .ToList();
+                string heldNote = heldForSizes.Count == 0 ? "" :
+                    $"⏸ {heldForSizes.Count} προϊόντα με μεγέθη δεν στέλνονται ακόμα " +
+                    $"({string.Join(", ", heldForSizes.Take(4).Select(p => p.Name))}" +
+                    $"{(heldForSizes.Count > 4 ? ", ..." : "")}) — η επιλογή «ένα προϊόν με " +
+                    "επιλογές» δεν είναι έτοιμη ακόμα· με «ξεχωριστά προϊόντα» στις Ρυθμίσεις " +
+                    "στέλνονται τώρα.";
+                if (heldNote.Length > 0) results.Add(heldNote);
 
                 // Prices are deliberately not compared or touched: the PointToOrder prices
                 // travel into Orexsys with each order anyway, so the platform's price IS the
@@ -79,18 +92,24 @@ namespace CatalogBridge
                 if (newProducts.Count == 0 && deactivations.Count == 0)
                 {
                     ShowStatus($"✓ Όλα συγχρονισμένα. {platform.Offers.Count} προϊόντα online, " +
-                               $"καμία διαφορά. ({DateTime.Now:HH:mm})", Good);
+                               $"καμία διαφορά" +
+                               (heldForSizes.Count > 0 ? " — εκτός από τα προϊόντα με μεγέθη (βλ. παρακάτω)" : "") +
+                               $". ({DateTime.Now:HH:mm})", Good);
+                    ResultsList.ItemsSource = results;
+                    ResultsCard.Visibility = results.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
                     return;
                 }
 
                 // --- the preview / map ------------------------------------------------------
-                string storeCode = settings.EficStoreCode;
-                if (storeCode.Length == 0)
-                    storeCode = await EficRepository.LoadStoreCodeAsync(settings);
+                // Validated, never read raw from settings: a code that belongs to another
+                // platform (Wolt / efood) comes back empty and stops the sync here, before
+                // anything is created on PointToOrder.
+                string storeCode = await EficRepository.LoadStoreCodeAsync(settings);
 
                 if (newProducts.Count > 0 && storeCode.Length == 0)
                 {
-                    ShowStatus("Λείπει ο κωδικός EFIC — ένας τεχνικός πρέπει να τον ορίσει στις Ρυθμίσεις.", Warn);
+                    ShowStatus("Λείπει ο κωδικός PointToOrder («Κωδ. EFIC») ή ανήκει σε άλλη πλατφόρμα " +
+                               "(Wolt / efood) — ένας τεχνικός πρέπει να τον ορίσει στις Ρυθμίσεις.", Warn);
                     return;
                 }
 
@@ -102,8 +121,11 @@ namespace CatalogBridge
                         categoriesByName[key] = category.CategoryId;
                 }
 
+                // One plan item per unit: a product, or - sent as separate items - each of its
+                // sizes («ΤΟΣΤ», «ΤΟΣΤ XL»), with that size's price and ITMVID.
                 var plans = newProducts
-                    .Select(p => new PushPlanItem { Product = p, DisplayName = p.Name })
+                    .SelectMany(p => PushRules.SendableUnits(p, settings))
+                    .Select(PushPlanItem.From)
                     .ToList();
 
                 var categoryPlans = newProducts
@@ -120,7 +142,12 @@ namespace CatalogBridge
                 if (plans.Count > 0)
                 {
                     var preview = new PushPreviewWindow(plans, categoryPlans, makeVisible: true,
-                        extraSummary: fixesSummary)
+                        extraSummary: fixesSummary + (heldForSizes.Count > 0
+                            ? $"\n⏸ Δεν στέλνονται ακόμα {heldForSizes.Count} προϊόντα με μεγέθη " +
+                              "(και οι κατηγορίες τους, αν δεν έχουν άλλο προϊόν): " +
+                              string.Join(", ", heldForSizes.Take(4).Select(p => p.Name)) +
+                              (heldForSizes.Count > 4 ? ", ..." : "")
+                            : ""))
                     {
                         Owner = Window.GetWindow(this),
                     };
@@ -172,14 +199,14 @@ namespace CatalogBridge
                         }
 
                         var offer = await api.CreateOfferAsync(
-                            platform.CatalogId, categoryId, plan.FinalName,
-                            plan.Product.Price ?? 0m);
+                            platform.CatalogId, categoryId, plan.FinalName, plan.Price);
                         if (offer.Id == 0)
                             throw new PointToOrderException("δεν επέστρεψε κωδικό");
 
                         newOfferIds.Add(offer.Id);
                         await EficRepository.InsertAsync(
-                            settings, storeCode, offer.Id, plan.FinalName, plan.Product.ItmsId);
+                            settings, storeCode, offer.Id, plan.FinalName, plan.Product.ItmsId,
+                            plan.ItmvId);
                         pushed++;
                     }
                     catch (Exception ex)

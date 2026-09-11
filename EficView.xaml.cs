@@ -62,9 +62,8 @@ namespace CatalogBridge
                 using var api = new PointToOrderApiClient(settings);
                 var platform = await api.GetCatalogAsync();
 
-                storeCode = settings.EficStoreCode;
-                if (storeCode.Length == 0)
-                    storeCode = await EficRepository.LoadStoreCodeAsync(settings);
+                // Validated: empty if the configured code belongs to Wolt / efood.
+                storeCode = await EficRepository.LoadStoreCodeAsync(settings);
 
                 // Annotate each correlation with what the platform actually holds under that
                 // code today - and whether the pairing still looks like the same product.
@@ -163,7 +162,8 @@ namespace CatalogBridge
             SetBusy(true);
             try
             {
-                await EficRepository.RepairAsync(Settings.Load(), row.EficId, product.ItmsId);
+                // The size stays as it was: re-pointing fixes the product, not the size.
+                await EficRepository.RepairAsync(Settings.Load(), row.EficId, product.ItmsId, row.ItmvId);
 
                 row.ItmsId = product.ItmsId;
                 row.OrexsysCode = product.Code;

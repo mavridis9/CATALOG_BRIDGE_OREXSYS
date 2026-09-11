@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
+using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using FirebirdSql.Data.FirebirdClient;
 
@@ -16,6 +19,12 @@ namespace CatalogBridge
         public long ItmsId { get; set; }
         public string OrexsysCode { get; set; } = "";
         public string OrexsysName { get; set; } = "";
+
+        // The size (ITMV) this row stands for; 0 = the product itself. Shown blank for 0 so
+        // the size-less majority of rows stays uncluttered.
+        public long ItmvId { get; set; }
+        public string SizeName { get; set; } = "";
+        public string SizeText => ItmvId == 0 ? "" : (SizeName.Length > 0 ? SizeName : $"#{ItmvId}");
 
         // A correlation pointing at an extras-category product (ITMC.ISEXTRA=1) is almost
         // certainly wrong: extras are modifiers on another item's line, and none of the 435
@@ -34,6 +43,13 @@ namespace CatalogBridge
             !FoundOnPlatform ? "⚠ Ορφανή" : "✓";
     }
 
+    // Thrown instead of writing when a write could reach an EFIC row that is not ours. The
+    // message is Greek and shown as-is by every screen's existing error handling.
+    public class EficSafetyException : InvalidOperationException
+    {
+        public EficSafetyException(string message) : base(message) { }
+    }
+
     // Reads and writes the EFIC correlation table. The write conventions were read off the
     // live triggers rather than guessed:
     //  - EFIC_BIUD_TRG generates EFICID from the efic_sq sequence when null and stamps RECVER,
@@ -42,8 +58,66 @@ namespace CatalogBridge
     //    STOREID+CODE whenever a row is inserted or updated - fixing a correlation here
     //    retroactively repairs pending external order lines, courtesy of Orexsys itself.
     //  - EFIC_LD logs every delete through Orexsys's own logdelete audit.
+    //
+    // EFIC is shared by every delivery platform Orexsys talks to: STOA.FDB, a real customer,
+    // carries live Wolt (211 rows) and efood (233) correlations. Those rows are never ours to
+    // touch, so the write side is fenced three ways - all enforced HERE, never trusted to a
+    // caller:
+    //  1. Writes run only under the resolved P2O store code: never an empty one, never the
+    //     EFSTID of another platform (see ResolveStoreCode / RequireOwnStoreCode).
+    //  2. Every UPDATE/DELETE is constrained by STOREID as well as EFICID and must hit exactly
+    //     the rows asked for, or it is rolled back - a wrong or stale EFICID cannot reach a
+    //     Wolt or efood row even through a bug upstream.
+    //  3. Before the first write to a database in a session, the whole table (every platform,
+    //     every column) is saved to backups\EFIC_<database>_<time>.csv next to the exe. If
+    //     that fails, nothing is written.
     public static class EficRepository
     {
+        // How EFST marks the PointToOrder row: APPTYPE 60 («P2O» on LIGHTHOUSE2). Wolt is 28
+        // and efood 6 on STOA.FDB. COALESCE so a row with NULLs counts as "not P2O".
+        private const string IsP2ORow =
+            "(COALESCE(APPTYPE, -1) = 60 OR COALESCE(NAME, '') CONTAINING 'P2O')";
+
+        // The store code this installation's EFIC rows are scoped by: the Settings override if
+        // set, otherwise the P2O row of EFST. Stavros.FDB kept a PO1007 row after moving to
+        // store 1110, and STOA lists Wolt first in EFST - so every read filters by this code,
+        // and neither the override nor the fallback may be another platform's code. Empty
+        // means no usable P2O store: then no EFIC row counts as ours and nothing is written.
+        internal static string ResolveStoreCode(FbConnection connection, Settings settings)
+        {
+            string configured = settings.EficStoreCode.Trim();
+            if (configured.Length > 0)
+                return BelongsToOtherPlatform(connection, configured) ? "" : configured;
+
+            using var command = new FbCommand(
+                $"SELECT FIRST 1 EFSTID FROM EFST WHERE {IsP2ORow} ORDER BY ID", connection);
+
+            object? result = command.ExecuteScalar();
+            return result == null || result == DBNull.Value ? "" : (result.ToString() ?? "").Trim();
+        }
+
+        // True when the code is the EFSTID of a non-P2O platform. A code EFST does not know at
+        // all is fine: that is every fresh P2O install.
+        private static bool BelongsToOtherPlatform(FbConnection connection, string code)
+        {
+            using var command = new FbCommand(
+                $"SELECT COUNT(*) FROM EFST WHERE EFSTID = @code AND NOT {IsP2ORow}", connection);
+            command.Parameters.AddWithValue("@code", code);
+            return Convert.ToInt32(command.ExecuteScalar()) > 0;
+        }
+
+        private static string RequireOwnStoreCode(FbConnection connection, Settings settings)
+        {
+            string code = ResolveStoreCode(connection, settings);
+            if (code.Length > 0) return code;
+
+            string configured = settings.EficStoreCode.Trim();
+            throw new EficSafetyException(configured.Length > 0
+                ? $"Ο «Κωδ. EFIC» «{configured}» ανήκει σε άλλη πλατφόρμα (π.χ. Wolt / efood). " +
+                  "Δεν γράφτηκε τίποτα — ορίστε στις Ρυθμίσεις τον κωδικό του PointToOrder."
+                : "Δεν έχει οριστεί κωδικός PointToOrder («Κωδ. EFIC»). Δεν γράφτηκε τίποτα.");
+        }
+
         public static Task<List<EficRow>> LoadAsync(Settings settings) => Task.Run(() =>
         {
             var rows = new List<EficRow>();
@@ -51,15 +125,21 @@ namespace CatalogBridge
             using var connection = new FbConnection(settings.ToConnectionString());
             connection.Open();
 
+            // An empty code matches no row, which is the point: never another platform's links.
+            // (Not "(@store = '' OR ...)" - Firebird types the parameter from the '' literal as
+            // CHAR(0) and truncates it.)
             const string sql = @"
-                SELECT e.EFICID, e.STOREID, e.CODE, e.NAME, e.ITMSID,
-                       i.CODE AS ICODE, i.NAME AS INAME, c.ISEXTRA
+                SELECT e.EFICID, e.STOREID, e.CODE, e.NAME, e.ITMSID, e.ITMVID,
+                       i.CODE AS ICODE, i.NAME AS INAME, c.ISEXTRA, v.NAME AS VNAME
                 FROM EFIC e
                 LEFT JOIN ITMS i ON i.ITMSID = e.ITMSID
                 LEFT JOIN ITMC c ON c.ITMCID = i.ITMCID
+                LEFT JOIN ITMV v ON v.ITMVID = e.ITMVID
+                WHERE e.STOREID = @store
                 ORDER BY e.EFICID";
 
             using var command = new FbCommand(sql, connection);
+            command.Parameters.AddWithValue("@store", ResolveStoreCode(connection, settings));
             using var reader = command.ExecuteReader();
 
             while (reader.Read())
@@ -71,6 +151,8 @@ namespace CatalogBridge
                     Code = ReadString(reader, "CODE"),
                     Name = ReadString(reader, "NAME"),
                     ItmsId = reader["ITMSID"] == DBNull.Value ? 0 : Convert.ToInt64(reader["ITMSID"]),
+                    ItmvId = reader["ITMVID"] == DBNull.Value ? 0 : Convert.ToInt64(reader["ITMVID"]),
+                    SizeName = ReadString(reader, "VNAME"),
                     OrexsysCode = ReadString(reader, "ICODE"),
                     OrexsysName = ReadString(reader, "INAME"),
                     TargetsExtra = reader["ISEXTRA"] != DBNull.Value &&
@@ -81,60 +163,110 @@ namespace CatalogBridge
             return rows;
         });
 
-        // The store code EFIC rows are scoped by (EFST.EFSTID, e.g. PO11521). Empty on a fresh
-        // installation - the caller then has to ask the operator for it, because nothing else
-        // in the database knows it.
+        // The P2O store code new EFIC rows are written with. Empty when neither Settings nor
+        // EFST names a usable P2O store - the caller then has to ask the operator for it.
         public static Task<string> LoadStoreCodeAsync(Settings settings) => Task.Run(() =>
         {
             using var connection = new FbConnection(settings.ToConnectionString());
             connection.Open();
-
-            using var command = new FbCommand(
-                "SELECT FIRST 1 EFSTID FROM EFST ORDER BY ID", connection);
-
-            object? result = command.ExecuteScalar();
-            return result == null || result == DBNull.Value ? "" : (result.ToString() ?? "").Trim();
+            return ResolveStoreCode(connection, settings);
         });
 
+        // One EFST line = one platform connection in Orexsys (Wolt, efood, PointToOrder...).
+        public sealed record EfstConnection(string EfstId, string Name, string Remarks, bool IsPointToOrder);
+
+        // Every connection EFST holds, flagged P2O or not, in Orexsys's own order. Settings
+        // offers only the P2O ones; the others are listed by name so the technician can see
+        // what the database does have when there is no P2O line yet.
+        public static Task<List<EfstConnection>> LoadConnectionsAsync(Settings settings) => Task.Run(() =>
+        {
+            var connections = new List<EfstConnection>();
+
+            using var connection = new FbConnection(settings.ToConnectionString());
+            connection.Open();
+
+            using var command = new FbCommand(
+                "SELECT EFSTID, NAME, REMARKS, " +
+                $"CASE WHEN {IsP2ORow} THEN 1 ELSE 0 END AS ISP2O FROM EFST ORDER BY ID", connection);
+            using var reader = command.ExecuteReader();
+
+            while (reader.Read())
+            {
+                connections.Add(new EfstConnection(
+                    ReadString(reader, "EFSTID"),
+                    ReadString(reader, "NAME"),
+                    ReadString(reader, "REMARKS"),
+                    Convert.ToInt32(reader["ISP2O"]) == 1));
+            }
+
+            return connections;
+        });
+
+        // itmvId: the size (ITMV) this platform offer stands for; 0 = the product itself. It is
+        // what EFOD_BIUD_TRG copies onto the incoming order line, so the till gets the size.
         public static Task<long> InsertAsync(
-            Settings settings, string storeCode, long offerId, string platformName, long itmsId) =>
+            Settings settings, string storeCode, long offerId, string platformName, long itmsId,
+            long itmvId = 0) =>
             Task.Run(() =>
             {
                 using var connection = new FbConnection(settings.ToConnectionString());
                 connection.Open();
 
-                // ITMVID 0 and CORRELATE 1 mirror every one of the 435 live rows. NAME is capped
-                // to its VARCHAR(200); CODE is the offerId and always fits.
+                string own = RequireOwnStoreCode(connection, settings);
+                if (!string.Equals(storeCode, own, StringComparison.Ordinal))
+                    throw new EficSafetyException(
+                        $"Ο κωδικός «{storeCode}» δεν είναι ο κωδικός PointToOrder αυτής της " +
+                        $"εγκατάστασης («{own}»). Δεν γράφτηκε τίποτα.");
+
+                EnsureBackedUp(connection, settings);
+
+                // Mirrors a row made by Orexsys itself for PointToOrder (owner's reference, 11/09):
+                // SALESNAME = NAME = the platform name, ITMVID = the size (0 = none), CORRELATE
+                // 1, the rest NULL. SALESNAME is "the name as it arrives on the order" —
+                // EFOD_BIUD_TRG and EFIC_AIUD_TRG match on it when an order line comes without
+                // a usable code. Both are VARCHAR(200); CODE is the offerId and always fits.
                 const string sql = @"
-                    INSERT INTO EFIC (STOREID, CODE, NAME, ITMSID, ITMVID, CORRELATE)
-                    VALUES (@storeid, @code, @name, @itmsid, 0, 1)
+                    INSERT INTO EFIC (STOREID, CODE, NAME, SALESNAME, ITMSID, ITMVID, CORRELATE)
+                    VALUES (@storeid, @code, @name, @name, @itmsid, @itmvid, 1)
                     RETURNING EFICID";
 
                 using var command = new FbCommand(sql, connection);
-                command.Parameters.AddWithValue("@storeid", storeCode);
+                command.Parameters.AddWithValue("@storeid", own);
                 command.Parameters.AddWithValue("@code", offerId.ToString());
                 command.Parameters.AddWithValue("@name", Cap(platformName, 200));
                 command.Parameters.AddWithValue("@itmsid", itmsId);
+                command.Parameters.AddWithValue("@itmvid", itmvId);
 
                 return Convert.ToInt64(command.ExecuteScalar());
             });
 
-        // Points an existing correlation at a different Orexsys product. The AIUD trigger then
-        // re-runs its EFOD backfill for this store+code, so pending unmapped order lines pick
-        // the correction up automatically.
-        public static Task RepairAsync(Settings settings, long eficId, long itmsId) => Task.Run(() =>
+        // Points an existing correlation at a different Orexsys product (and size: 0 = the
+        // product itself). The AIUD trigger then re-runs its EFOD backfill for this
+        // store+code, so pending unmapped order lines pick the correction up automatically.
+        public static Task RepairAsync(Settings settings, long eficId, long itmsId, long itmvId = 0) =>
+            Task.Run(() =>
         {
             using var connection = new FbConnection(settings.ToConnectionString());
             connection.Open();
 
+            string own = RequireOwnStoreCode(connection, settings);
+            EnsureBackedUp(connection, settings);
+
             using var command = new FbCommand(
-                "UPDATE EFIC SET ITMSID = @itmsid, ITMVID = 0, CORRELATE = 1 WHERE EFICID = @id",
-                connection);
+                "UPDATE EFIC SET ITMSID = @itmsid, ITMVID = @itmvid, CORRELATE = 1 " +
+                "WHERE EFICID = @id AND STOREID = @store", connection);
             command.Parameters.AddWithValue("@itmsid", itmsId);
+            command.Parameters.AddWithValue("@itmvid", itmvId);
             command.Parameters.AddWithValue("@id", eficId);
-            command.ExecuteNonQuery();
+            command.Parameters.AddWithValue("@store", own);
+
+            if (command.ExecuteNonQuery() != 1)
+                throw new EficSafetyException(
+                    "Η αντιστοίχιση δεν ανήκει στο PointToOrder αυτής της εγκατάστασης ή δεν " +
+                    "υπάρχει πλέον. Δεν άλλαξε τίποτα.");
         });
 
+        // All or nothing: if any id is not one of our rows, the whole delete is rolled back.
         public static Task DeleteAsync(Settings settings, IReadOnlyList<long> eficIds) => Task.Run(() =>
         {
             if (eficIds.Count == 0) return;
@@ -142,19 +274,76 @@ namespace CatalogBridge
             using var connection = new FbConnection(settings.ToConnectionString());
             connection.Open();
 
+            string own = RequireOwnStoreCode(connection, settings);
+            EnsureBackedUp(connection, settings);
+
             using var transaction = connection.BeginTransaction();
             using var command = new FbCommand(
-                "DELETE FROM EFIC WHERE EFICID = @id", connection, transaction);
-            var parameter = command.Parameters.Add("@id", FbDbType.BigInt);
+                "DELETE FROM EFIC WHERE EFICID = @id AND STOREID = @store", connection, transaction);
+            var idParameter = command.Parameters.Add("@id", FbDbType.BigInt);
+            command.Parameters.AddWithValue("@store", own);
 
             foreach (long id in eficIds)
             {
-                parameter.Value = id;
-                command.ExecuteNonQuery();
+                idParameter.Value = id;
+                if (command.ExecuteNonQuery() != 1)
+                {
+                    transaction.Rollback();
+                    throw new EficSafetyException(
+                        $"Η γραμμή EFIC {id} δεν ανήκει στο PointToOrder αυτής της εγκατάστασης " +
+                        "ή δεν υπάρχει πλέον. Δεν διαγράφηκε τίποτα.");
+                }
             }
 
             transaction.Commit();
         });
+
+        // Databases already backed up in this session. Keyed by the database path so a
+        // technician switching databases mid-session still gets a backup of the new one.
+        private static readonly HashSet<string> BackedUpDatabases =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        private static void EnsureBackedUp(FbConnection connection, Settings settings)
+        {
+            lock (BackedUpDatabases)
+            {
+                if (BackedUpDatabases.Contains(settings.Database)) return;
+
+                string folder = Path.Combine(AppContext.BaseDirectory, "backups");
+                Directory.CreateDirectory(folder);
+                string file = Path.Combine(folder,
+                    $"EFIC_{Path.GetFileNameWithoutExtension(settings.Database)}_" +
+                    $"{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+
+                var csv = new StringBuilder();
+
+                using (var command = new FbCommand("SELECT * FROM EFIC ORDER BY EFICID", connection))
+                using (var reader = command.ExecuteReader())
+                {
+                    for (int i = 0; i < reader.FieldCount; i++)
+                        csv.Append(i == 0 ? "" : ";").Append(Quote(reader.GetName(i)));
+                    csv.AppendLine();
+
+                    while (reader.Read())
+                    {
+                        for (int i = 0; i < reader.FieldCount; i++)
+                        {
+                            string value = reader.IsDBNull(i)
+                                ? "" : Convert.ToString(reader.GetValue(i), CultureInfo.InvariantCulture) ?? "";
+                            csv.Append(i == 0 ? "" : ";").Append(Quote(value));
+                        }
+                        csv.AppendLine();
+                    }
+                }
+
+                // UTF-8 with BOM so Excel opens the Greek names correctly.
+                File.WriteAllText(file, csv.ToString(), new UTF8Encoding(true));
+                BackedUpDatabases.Add(settings.Database);
+            }
+        }
+
+        // Every field quoted: RAWTEXT carries JSON with ';', quotes and line breaks.
+        private static string Quote(string value) => "\"" + value.Replace("\"", "\"\"") + "\"";
 
         private static string ReadString(IDataRecord record, string column)
         {

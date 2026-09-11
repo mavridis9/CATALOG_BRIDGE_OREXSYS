@@ -46,6 +46,25 @@ public class CatalogDiffTests
 
     // ---- matching ------------------------------------------------------------------------
 
+    // A product sent as separate items per size has one code per size: every size online is
+    // its own row (so a product switched off at the till switches off ALL its sizes), named
+    // with the size, and none of them is reported as "only on PointToOrder".
+    [TestMethod]
+    public void ProductWithSizes_MatchesEverySizeOffer_OneRowEach()
+    {
+        var tost = Product(203, "ΤΟΣΤ ΖΑΜΠΟΝ ΚΑΣΕΡΙ", active: false, codes: new[] { "26745", "26990" });
+        tost.Sizes.Add(new OrexsysSize(17, "XL", 4m));
+        tost.LinkSizes["26990"] = 17;
+
+        var r = Diff(new[] { tost }, new[] { Offer(26745, "ΤΟΣΤ"), Offer(26990, "ΤΟΣΤ XL") });
+
+        Assert.AreEqual(2, r.Rows.Count);
+        Assert.IsTrue(r.Rows.All(x => x.MatchedBy == MatchKind.ByCode && x.Status == DiffStatus.ActiveMismatch));
+        Assert.AreEqual(0, r.CountOf(DiffStatus.PlatformOnly));
+        CollectionAssert.AreEquivalent(new[] { "ΤΟΣΤ ΖΑΜΠΟΝ ΚΑΣΕΡΙ (Κανονικό)", "ΤΟΣΤ ΖΑΜΠΟΝ ΚΑΣΕΡΙ (XL)" },
+            r.Rows.Select(x => x.OrexsysName).ToArray());
+    }
+
     [TestMethod]
     public void CodeMatch_IsAuthoritative_EvenWhenNamesShareNothing()
     {
