@@ -69,18 +69,6 @@ namespace CatalogBridge
                     .Where(p => PushRules.IsSendable(p, settings))
                     .ToList();
 
-                // Products with sizes wait while «ένα προϊόν με επιλογές» is not built yet - see
-                // PushRules. Named in the report so nobody wonders why they are missing online.
-                var heldForSizes = orexsys.Products
-                    .Where(p => PushRules.IsHeldForSizes(p, settings))
-                    .ToList();
-                string heldNote = heldForSizes.Count == 0 ? "" :
-                    $"⏸ {heldForSizes.Count} προϊόντα με μεγέθη δεν στέλνονται ακόμα " +
-                    $"({string.Join(", ", heldForSizes.Take(4).Select(p => p.Name))}" +
-                    $"{(heldForSizes.Count > 4 ? ", ..." : "")}) — η επιλογή «ένα προϊόν με " +
-                    "επιλογές» δεν είναι έτοιμη ακόμα· με «ξεχωριστά προϊόντα» στις Ρυθμίσεις " +
-                    "στέλνονται τώρα.";
-                if (heldNote.Length > 0) results.Add(heldNote);
 
                 // Prices are deliberately not compared or touched: the PointToOrder prices
                 // travel into Orexsys with each order anyway, so the platform's price IS the
@@ -92,11 +80,7 @@ namespace CatalogBridge
                 if (newProducts.Count == 0 && deactivations.Count == 0)
                 {
                     ShowStatus($"✓ Όλα συγχρονισμένα. {platform.Offers.Count} προϊόντα online, " +
-                               $"καμία διαφορά" +
-                               (heldForSizes.Count > 0 ? " — εκτός από τα προϊόντα με μεγέθη (βλ. παρακάτω)" : "") +
-                               $". ({DateTime.Now:HH:mm})", Good);
-                    ResultsList.ItemsSource = results;
-                    ResultsCard.Visibility = results.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+                               $"καμία διαφορά. ({DateTime.Now:HH:mm})", Good);
                     return;
                 }
 
@@ -142,12 +126,7 @@ namespace CatalogBridge
                 if (plans.Count > 0)
                 {
                     var preview = new PushPreviewWindow(plans, categoryPlans, makeVisible: true,
-                        extraSummary: fixesSummary + (heldForSizes.Count > 0
-                            ? $"\n⏸ Δεν στέλνονται ακόμα {heldForSizes.Count} προϊόντα με μεγέθη " +
-                              "(και οι κατηγορίες τους, αν δεν έχουν άλλο προϊόν): " +
-                              string.Join(", ", heldForSizes.Take(4).Select(p => p.Name)) +
-                              (heldForSizes.Count > 4 ? ", ..." : "")
-                            : ""))
+                        extraSummary: fixesSummary)
                     {
                         Owner = Window.GetWindow(this),
                     };
@@ -207,6 +186,13 @@ namespace CatalogBridge
                         await EficRepository.InsertAsync(
                             settings, storeCode, offer.Id, plan.FinalName, plan.Product.ItmsId,
                             plan.ItmvId);
+
+                        // Size option group («ΕΠΙΛΕΞΤΕ ΜΕΓΕΘΟΣ») under the offer; its options
+                        // are offers too and must be made visible along with the parent.
+                        if (plan.Options.Count > 0)
+                            newOfferIds.AddRange(await api.CreateOptionGroupAsync(
+                                platform.CatalogId, offer.Id, PushRules.SizeGroupName,
+                                plan.Options.Select(o => (o.Name, o.Surcharge)).ToList()));
                         pushed++;
                     }
                     catch (Exception ex)

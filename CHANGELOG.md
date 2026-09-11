@@ -22,9 +22,18 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   skipped. Σύγκριση pairs every size offer with its product (one row per size, «ΤΟΣΤ (XL)»),
   so switching a product off at the till switches off all its sizes online; Αντιστοιχίσεις
   shows a «Μέγεθος» column and re-pointing keeps the size; Πίνακας ελέγχου counts per size.
-  Ρυθμίσεις → «Προϊόντα με μεγέθη» chooses the mode; «Ένα προϊόν με επιλογές μεγέθους»
-  (`OptionGroup`) is listed but not built yet — with it sized products are held back and named.
-  Verified on the scratch copy (11/11 checks) and with the EFIC proof harness (26/26).
+  Ρυθμίσεις → «Προϊόντα με μεγέθη» chooses the mode. Verified on the scratch copy (11/11
+  checks), with the EFIC proof harness (26/26) and live on demo 1110 (ΤΟΣΤ + ΤΟΣΤ XL, EFIC
+  rows with ITMVID 0 and 17).
+- **Sizes as one product with an option group (`SizeMode=OptionGroup`).** The product goes out
+  once, at its cheapest price, with a single-choice group «ΕΠΙΛΕΞΤΕ ΜΕΓΕΘΟΣ» whose choices are
+  the sizes with the difference as surcharge (Κανονικό +0,00 · XL +3,00 — shown in the preview).
+  One EFIC row, `ITMVID 0`: the price reaches the till right, the size only as text in
+  `EFOD.OPTIONS`, not in the size field (owner's accepted trade-off, 11/09). Built on what the
+  admin UI itself creates (read live on 1110): the group is a `CHILD` category with
+  `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
+  (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
+  if sizes are added later. Verified end to end on demo 1110, created and deleted again.
 - **Sizes, step 1 — read them, hold them back.** Fix: `PRLD` is unique on
   `PRLSID+ITMSID+ITMVID`, and the catalog and category-picker joins ignored `ITMVID`, so a
   product with sizes was read once per size — pushed twice or three times, counted double.

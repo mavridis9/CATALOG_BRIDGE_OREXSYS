@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 
 namespace CatalogBridge
@@ -17,11 +18,18 @@ namespace CatalogBridge
         public string SizeName { get; init; } = "";
         public decimal Price { get; init; }
 
+        // Size option group to add under the offer (SizeMode.OptionGroup); empty otherwise.
+        public List<PushOption> Options { get; init; } = new();
+
         public static PushPlanItem From(PushUnit unit) => new()
         {
             Product = unit.Product, ItmvId = unit.ItmvId, SizeName = unit.SizeName,
-            Price = unit.Price, DisplayName = unit.DefaultName,
+            Price = unit.Price, DisplayName = unit.DefaultName, Options = unit.Options,
         };
+
+        // «Κανονικό +0,00 · XL +3,00» - what the customer will be asked to choose.
+        public string OptionsText => Options.Count == 0 ? "" :
+            string.Join(" · ", Options.Select(o => $"{o.Name} +{o.Surcharge:0.00}"));
 
         public string Code => Product.Code;
         public string OrexsysName => SizeName.Length > 0 ? $"{Product.Name} ({SizeName})" : Product.Name;

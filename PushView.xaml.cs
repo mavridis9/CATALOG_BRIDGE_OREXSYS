@@ -25,14 +25,14 @@ namespace CatalogBridge
             public string PriceText => Product.Price is decimal p ? p.ToString("0.00") : "—";
             public string StateText => Product.IsActive ? "Ενεργό" : "Ανενεργό";
 
-            // What is still to be sent for this product: with sizes as separate items, each
-            // pending size; ⏸ when the product waits for the option-group mode (PushRules).
+            // What is still to be sent for this product (PushRules): with sizes as separate
+            // items each pending size with its price; with an option group the choices.
             public List<PushUnit> Units { get; init; } = new();
-            public bool Held { get; init; }
             public string SizesText =>
                 !Product.HasSizes ? "" :
-                Held ? "⏸ " + Product.SizesText :
-                string.Join(" · ", Units.Select(u => $"{u.SizeName} {u.Price:0.00}"));
+                Units.Count == 1 && Units[0].Options.Count > 0
+                    ? "επιλογές: " + string.Join(" · ", Units[0].Options.Select(o => $"{o.Name} +{o.Surcharge:0.00}"))
+                    : string.Join(" · ", Units.Select(u => $"{u.SizeName} {u.Price:0.00}"));
         }
 
         private List<PushItem> unmapped = new();
@@ -84,16 +84,10 @@ namespace CatalogBridge
                     .Count(p => p.ExternalCodes.Count == 0 && p.IsExtra);
 
                 // Everything with something still to create on PointToOrder (PushRules): a
-                // product with no link, or a size of a product that has no link yet; plus the
-                // held-back ones, listed so they are not simply missing.
+                // product with no link, or a size of a product that has no link yet.
                 unmapped = orexsys.Products
-                    .Select(p => new PushItem
-                    {
-                        Product = p,
-                        Units = PushRules.PendingUnits(p, settings),
-                        Held = PushRules.IsHeldForSizes(p, settings),
-                    })
-                    .Where(i => i.Units.Count > 0 || i.Held)
+                    .Select(p => new PushItem { Product = p, Units = PushRules.PendingUnits(p, settings) })
+                    .Where(i => i.Units.Count > 0)
                     .ToList();
 
                 ApplyFilter();
@@ -161,20 +155,13 @@ namespace CatalogBridge
         {
             if (platform == null) return;
 
-            var picked = ProductsGrid.SelectedItems.OfType<PushItem>().ToList();
-
-            // Held-back products (sizes in option-group mode, not built yet) cannot be sent.
-            var withSizes = picked.Where(i => i.Held).Select(i => i.Product).ToList();
-            var selectedItems = picked.Where(i => !i.Held && i.Units.Count > 0).ToList();
+            var selectedItems = ProductsGrid.SelectedItems.OfType<PushItem>()
+                .Where(i => i.Units.Count > 0).ToList();
             var selected = selectedItems.Select(i => i.Product).ToList();
 
             if (selected.Count == 0)
             {
-                ShowStatus(withSizes.Count > 0
-                    ? $"Τα επιλεγμένα προϊόντα έχουν μεγέθη ({string.Join(", ", withSizes.Take(4).Select(p => p.Name))}) " +
-                      "— η επιλογή «ένα προϊόν με επιλογές» δεν είναι έτοιμη ακόμα. Με «ξεχωριστά " +
-                      "προϊόντα» στις Ρυθμίσεις στέλνονται τώρα."
-                    : "Επιλέξτε πρώτα ένα ή περισσότερα προϊόντα.", Warn);
+                ShowStatus("Επιλέξτε πρώτα ένα ή περισσότερα προϊόντα.", Warn);
                 return;
             }
 
@@ -275,6 +262,23 @@ namespace CatalogBridge
 
                         createdOfferIds.Add(offer.Id);
 
+                        // Size option group («ΕΠΙΛΕΞΤΕ ΜΕΓΕΘΟΣ») under the offer; its options
+                        // are offers too and are made visible along with the parent.
+                        if (plan.Options.Count > 0)
+                        {
+                            try
+                            {
+                                createdOfferIds.AddRange(await api.CreateOptionGroupAsync(
+                                    platform.CatalogId, offer.Id, PushRules.SizeGroupName,
+                                    plan.Options.Select(o => (o.Name, o.Surcharge)).ToList()));
+                            }
+                            catch (Exception ex)
+                            {
+                                failures.Add($"{displayName}: το προϊόν δημιουργήθηκε αλλά όχι οι " +
+                                             $"επιλογές μεγέθους — {ex.Message}");
+                            }
+                        }
+
                         // The platform product now exists; if the EFIC insert fails the two
                         // systems are out of step, which is worse than a failed create - so it
                         // is tracked separately and reported loudly. EFIC.NAME records the
@@ -315,11 +319,6 @@ namespace CatalogBridge
             var report = new StringBuilder();
             report.Append($"Δημιουργήθηκαν {created} από {plans.Count} προϊόντα" +
                           (makeVisible ? " (ορατά)." : " (κρυφά)."));
-
-            if (withSizes.Count > 0)
-                report.Append($"\n⏸ Δεν στάλθηκαν {withSizes.Count} προϊόντα με μεγέθη " +
-                              $"({string.Join(", ", withSizes.Take(4).Select(p => p.Name))}" +
-                              $"{(withSizes.Count > 4 ? ", ..." : "")}) — «ένα προϊόν με επιλογές» δεν είναι έτοιμο ακόμα.");
 
             if (eficFailures.Count > 0)
             {

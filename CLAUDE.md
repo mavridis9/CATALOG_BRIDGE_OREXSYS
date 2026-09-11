@@ -147,12 +147,15 @@ git-ignored and excluded from publish. The sidebar shows the version.
   (`Settings.SizeMode`): **SeparateItems** (built) — `PushRules.PendingUnits` yields one
   `PushUnit` per unlinked priced size (+ the product itself), each created as its own offer
   and EFIC row with its ITMVID; `OrexsysProduct.LinkSizes` (code → ITMVID) makes the diff
-  pair every size offer. **OptionGroup** (not built) — one offer + a size option group with
-  surcharges; the owner accepts the till gets ITMVID 0 (size only as `EFOD.OPTIONS` text).
-  Read live on demo 1110: an option group is a CHILD category (min/max) nested in the offer,
-  each option an offer with its own offerId; API has createCategory CHILD / associate, plus
-  an Excel route. Demo/test store for P2O writes = 1110 only. Test DB with sizes: scratch
-  gbak copy of Stavros.
+  pair every size offer. **OptionGroup** (built) — one offer at the cheapest price + a
+  single-choice CHILD category «ΕΠΙΛΕΞΤΕ ΜΕΓΕΘΟΣ» (`min 1`, `max 1`, `parentOfferId`) whose
+  choices are offers with the surcharge as price (`CreateOptionGroupAsync`, verified live on
+  1110 — nesting happens on create, no `associate` call needed); one EFIC row, ITMVID 0; the
+  owner accepts the till gets the size only as `EFOD.OPTIONS` text. Nested option offers do
+  not appear in the catalog listing, so the diff never sees them. A linked product is never
+  given a group afterwards. Rule 5's write surface now includes CHILD category + CHILD offer
+  creates. Demo/test store for P2O writes = 1110 only (owner, 11/09). Test DB with sizes:
+  scratch gbak copy of Stavros.
 - **«Σύνδεση P2O» dropdown (1.1.0).** Ρυθμίσεις no longer takes a typed EFIC code: it lists
   `EficRepository.LoadConnectionsAsync` rows flagged P2O (one EFST line = one connection),
   plus «καμία» and a flagged test code if one is saved. The path where a database *has* a P2O

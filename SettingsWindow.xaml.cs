@@ -92,7 +92,7 @@ namespace CatalogBridge
             SizeModeCombo.ItemsSource = new List<SizeModeOption>
             {
                 new() { Value = SizeMode.SeparateItems, Label = "Ξεχωριστά προϊόντα ανά μέγεθος (προτείνεται)" },
-                new() { Value = SizeMode.OptionGroup, Label = "Ένα προϊόν με επιλογές μεγέθους (δεν είναι έτοιμο ακόμα)" },
+                new() { Value = SizeMode.OptionGroup, Label = "Ένα προϊόν με επιλογές μεγέθους (επιβάρυνση ανά μέγεθος)" },
             };
             SizeModeCombo.SelectedIndex = settings.SizeMode == SizeMode.OptionGroup ? 1 : 0;
 

@@ -313,6 +313,61 @@ namespace CatalogBridge
             return new CreatedEntity(ExtractId(body, "offerId", "id"), body);
         }
 
+        // Adds a single-choice option group («ΕΠΙΛΕΞΤΕ ΜΕΓΕΘΟΣ») to an existing offer. Verified
+        // live on demo store 1110 (11/09/2026): an option group is a CHILD category with min/max
+        // and parentOfferId, nested straight into the offer's `categories[]`, and each option
+        // is an ordinary offer inside that category with its surcharge as `price` - exactly
+        // how the admin UI's own option groups read back. Options are born hidden like any new
+        // offer, so the returned ids must go through SetOfferStatusAsync(sellable: true) with
+        // the parent. Returns the option offerIds in the order given.
+        public async Task<List<long>> CreateOptionGroupAsync(
+            long catalogId, long parentOfferId, string groupName,
+            IReadOnlyList<(string Name, decimal Surcharge)> options)
+        {
+            var group = await SendAuthorizedAsync(() => http.PostAsJsonAsync(
+                $"{baseUrl}/api/v1/stores/{storeId}/catalog/{catalogId}/category",
+                new Dictionary<string, object>
+                {
+                    ["name"] = groupName,
+                    ["hierarchyLevel"] = "CHILD",
+                    ["min"] = 1,
+                    ["max"] = 1,
+                    ["parentOfferId"] = parentOfferId,
+                }));
+
+            string groupBody = await group.Content.ReadAsStringAsync();
+            if (!group.IsSuccessStatusCode)
+                throw new PointToOrderException(
+                    $"Δεν ήταν δυνατή η δημιουργία ομάδας επιλογών ({(int)group.StatusCode}): {groupBody}");
+
+            long groupId = ExtractId(groupBody, "categoryId", "id");
+            if (groupId == 0)
+                throw new PointToOrderException("Η ομάδα επιλογών δημιουργήθηκε αλλά δεν επέστρεψε id.");
+
+            var ids = new List<long>();
+            foreach (var (name, surcharge) in options)
+            {
+                var response = await SendAuthorizedAsync(() => http.PostAsJsonAsync(
+                    $"{baseUrl}/api/v1/stores/{storeId}/catalog/{catalogId}/offer",
+                    new Dictionary<string, object>
+                    {
+                        ["name"] = name,
+                        ["price"] = surcharge,
+                        ["categoryId"] = groupId,
+                        ["hierarchyLevel"] = "CHILD",
+                    }));
+
+                string body = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode)
+                    throw new PointToOrderException(
+                        $"Δεν ήταν δυνατή η δημιουργία επιλογής «{name}» ({(int)response.StatusCode}): {body}");
+
+                ids.Add(ExtractId(body, "offerId", "id"));
+            }
+
+            return ids;
+        }
+
         // Permanently removes products from the platform. There is no undo on PointToOrder's
         // side - a deleted product can only come back by being recreated.
         public async Task DeleteOffersAsync(long catalogId, IReadOnlyList<long> offerIds)

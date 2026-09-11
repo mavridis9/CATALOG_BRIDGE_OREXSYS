@@ -71,6 +71,8 @@
                                         Width="*" IsReadOnly="False"/>
                     <DataGridTextColumn Header="Τιμή" Binding="{Binding PriceText}" Width="75"
                                         IsReadOnly="True"/>
+                    <DataGridTextColumn Header="Επιλογές μεγέθους" Binding="{Binding OptionsText}"
+                                        Width="200" IsReadOnly="True"/>
                 </DataGrid.Columns>
             </DataGrid>
         </Border>

@@ -67,7 +67,7 @@ namespace CatalogBridge
         //                 its own EFIC row carrying the ITMVID - the size reaches the till.
         //  OptionGroup:   one offer at the base price plus an option group («ΕΠΙΛΕΞΤΕ ΜΕΓΕΘΟΣ»)
         //                 with the surcharge per size; the till gets ITMVID 0 and the size only
-        //                 as text in EFOD.OPTIONS (accepted by the owner). Not built yet.
+        //                 as text in EFOD.OPTIONS (accepted by the owner).
         public SizeMode SizeMode { get; init; } = SizeMode.SeparateItems;
 
         private HashSet<long>? syncCategories;
