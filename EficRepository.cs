@@ -298,6 +298,48 @@ namespace CatalogBridge
             transaction.Commit();
         });
 
+        // Removes the rows of one product whose platform offers no longer exist (its
+        // OrphanCodes), just before the product is sent again. Same fences as DeleteAsync:
+        // own store code only, STOREID in the WHERE, exactly one row per code or rollback.
+        // Returns the number of rows removed.
+        public static Task<int> DeleteOrphanLinksAsync(
+            Settings settings, long itmsId, IReadOnlyList<string> codes) => Task.Run(() =>
+        {
+            if (codes.Count == 0) return 0;
+
+            using var connection = new FbConnection(settings.ToConnectionString());
+            connection.Open();
+
+            string own = RequireOwnStoreCode(connection, settings);
+            EnsureBackedUp(connection, settings);
+
+            using var transaction = connection.BeginTransaction();
+            using var command = new FbCommand(
+                "DELETE FROM EFIC WHERE STOREID = @store AND CODE = @code AND ITMSID = @itmsid",
+                connection, transaction);
+            command.Parameters.AddWithValue("@store", own);
+            var codeParameter = command.Parameters.Add("@code", FbDbType.VarChar, 200);
+            command.Parameters.AddWithValue("@itmsid", itmsId);
+
+            int removed = 0;
+            foreach (string code in codes)
+            {
+                codeParameter.Value = code;
+                int n = command.ExecuteNonQuery();
+                if (n != 1)
+                {
+                    transaction.Rollback();
+                    throw new EficSafetyException(
+                        $"Η παλιά αντιστοίχιση {code} δεν βρέθηκε μία φορά στο PointToOrder αυτής " +
+                        $"της εγκατάστασης ({n} γραμμές). Δεν διαγράφηκε τίποτα.");
+                }
+                removed += n;
+            }
+
+            transaction.Commit();
+            return removed;
+        });
+
         // Databases already backed up in this session. Keyed by the database path so a
         // technician switching databases mid-session still gets a backup of the new one.
         private static readonly HashSet<string> BackedUpDatabases =

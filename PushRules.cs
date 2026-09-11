@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -26,6 +27,34 @@ namespace CatalogBridge
     public static class PushRules
     {
         public const string SizeGroupName = "ΕΠΙΛΕΞΤΕ ΜΕΓΕΘΟΣ";
+
+        // An EFIC row whose offerId is no longer on the platform links nothing: the customer
+        // deleted the product on PointToOrder (seen 11/09 on demo 1110 — the sync then said
+        // «όλα συγχρονισμένα» with an empty shop). Such codes are moved to OrphanCodes so the
+        // product becomes pending again; the dead rows are deleted when it is re-sent. Only
+        // top-level offers are in the listing - option-group choices are never linked, so
+        // nothing is misjudged. Returns how many products were affected.
+        public static int DropOrphanLinks(OrexsysCatalogSnapshot orexsys, CatalogSnapshot platform)
+        {
+            var online = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var offer in platform.Offers)
+                foreach (string candidate in offer.CodeCandidates) online.Add(candidate);
+
+            int affected = 0;
+            foreach (var product in orexsys.Products)
+            {
+                var dead = product.ExternalCodes.Where(c => !online.Contains(c)).ToList();
+                if (dead.Count == 0) continue;
+
+                affected++;
+                foreach (string code in dead)
+                {
+                    product.ExternalCodes.Remove(code);
+                    product.OrphanCodes.Add(code);
+                }
+            }
+            return affected;
+        }
 
         // A real product (not an extra) in a category chosen in Ρυθμίσεις.
         public static bool IsEligible(OrexsysProduct product, Settings settings) =>

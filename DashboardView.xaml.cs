@@ -62,6 +62,7 @@ namespace CatalogBridge
                 using var api = new PointToOrderApiClient(settings);
                 var platform = await api.GetCatalogAsync();
 
+                PushRules.DropOrphanLinks(orexsys, platform);
                 var diff = CatalogDiff.Build(orexsys, platform, settings);
 
                 OkCount.Text = diff.CountOf(DiffStatus.Identical).ToString();

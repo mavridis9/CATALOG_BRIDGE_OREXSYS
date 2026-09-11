@@ -62,6 +62,10 @@ namespace CatalogBridge
 
                 using var api = new PointToOrderApiClient(settings);
                 var platform = await api.GetCatalogAsync();
+                // A link to an offer that no longer exists online (deleted on PointToOrder by
+                // hand) is no link: the product is sent again and the dead row cleaned up.
+                int orphaned = PushRules.DropOrphanLinks(orexsys, platform);
+
                 var diff = CatalogDiff.Build(orexsys, platform, settings);
 
                 // --- what needs doing -------------------------------------------------------
@@ -153,9 +157,10 @@ namespace CatalogBridge
                 var targetCategoryNames = categoryPlans.ToDictionary(
                     c => CatalogDiff.Normalise(c.OrexsysName), c => c.FinalName);
 
-                int pushed = 0;
+                int pushed = 0, orphanRowsRemoved = 0;
                 var pushFailures = new List<string>();
                 var newOfferIds = new List<long>();
+                var orphansCleaned = new HashSet<long>();
 
                 foreach (var plan in plans)
                 {
@@ -163,6 +168,12 @@ namespace CatalogBridge
                                $"{plan.FinalName}...", Normal);
                     try
                     {
+                        // Dead EFIC rows of this product go first, once per product, so the
+                        // new row is the only one for its size.
+                        if (plan.Product.OrphanCodes.Count > 0 && orphansCleaned.Add(plan.Product.ItmsId))
+                            orphanRowsRemoved += await EficRepository.DeleteOrphanLinksAsync(
+                                settings, plan.Product.ItmsId, plan.Product.OrphanCodes);
+
                         string orexsysCategory = plan.Product.CategoryName.Length > 0
                             ? plan.Product.CategoryName : "ΔΙΑΦΟΡΑ";
                         string targetCategory = targetCategoryNames.TryGetValue(
@@ -209,6 +220,13 @@ namespace CatalogBridge
                     await api.SetOfferStatusAsync(platform.CatalogId, newOfferIds, sellable: true);
                     results.Add($"✓ Στάλθηκαν {pushed} νέα προϊόντα (ορατά στους πελάτες)");
                 }
+
+                if (orphanRowsRemoved > 0)
+                    results.Add($"♻ {orphansCleaned.Count} προϊόντα είχαν διαγραφεί από το PointToOrder " +
+                                $"και στάλθηκαν ξανά — {orphanRowsRemoved} παλιές αντιστοιχίσεις καθαρίστηκαν");
+                else if (orphaned > 0)
+                    results.Add($"⚠ {orphaned} προϊόντα έχουν αντιστοίχιση σε προϊόν που δεν υπάρχει πια " +
+                                "στο PointToOrder (βλ. Αντιστοιχίσεις)");
 
                 if (deactivations.Count > 0)
                 {

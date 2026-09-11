@@ -78,6 +78,9 @@ namespace CatalogBridge
                 // Validated: empty if the configured code belongs to Wolt / efood.
                 storeCode = await EficRepository.LoadStoreCodeAsync(settings);
 
+                // Links to offers deleted on PointToOrder count as no link (PushRules).
+                int orphaned = PushRules.DropOrphanLinks(orexsys, platform);
+
                 // Extras (ITMC.ISEXTRA=1) are excluded outright: they are modifiers riding on
                 // another item's line, not products, and must never become platform offers.
                 int extrasExcluded = orexsys.Products
@@ -97,6 +100,9 @@ namespace CatalogBridge
                                $"({extrasExcluded} extras εξαιρέθηκαν). ");
                 message.Append($"Κατάλογος PointToOrder: {platform.Offers.Count} προϊόντα, " +
                                $"{platform.Categories.Count} κατηγορίες. ");
+                if (orphaned > 0)
+                    message.Append($"♻ {orphaned} προϊόντα είχαν διαγραφεί από το PointToOrder — " +
+                                   "εμφανίζονται ξανά· η παλιά αντιστοίχιση καθαρίζεται στην αποστολή. ");
                 message.Append(storeCode.Length > 0
                     ? $"Κωδικός EFIC: {storeCode}."
                     : "⚠ Δεν βρέθηκε κωδικός EFIC (κενό EFST) — ορίστε το «EficStoreCode» στις Ρυθμίσεις πριν την αποστολή.");
@@ -227,6 +233,7 @@ namespace CatalogBridge
             var failures = new List<string>();
             var eficFailures = new List<string>();
             var createdOfferIds = new List<long>();
+            var orphansCleaned = new HashSet<long>();
 
             try
             {
@@ -242,6 +249,11 @@ namespace CatalogBridge
 
                     try
                     {
+                        // Dead EFIC rows of this product go first, once per product.
+                        if (product.OrphanCodes.Count > 0 && orphansCleaned.Add(product.ItmsId))
+                            await EficRepository.DeleteOrphanLinksAsync(
+                                settings, product.ItmsId, product.OrphanCodes);
+
                         // The category goes to PointToOrder under the name chosen in the
                         // review step, not necessarily the Orexsys one.
                         string orexsysCategory =

@@ -34,6 +34,14 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **Fix: a link to a product deleted on PointToOrder no longer counts as "sent".** Seen on
+  demo 1110: every product deleted in the P2O admin, and Συγχρονισμός still reported «όλα
+  συγχρονισμένα» because the EFIC rows were still there. Now an EFIC code whose offer is not
+  in the catalog is an orphan (`PushRules.DropOrphanLinks`): the product is offered again in
+  Συγχρονισμός, Αποστολή and Πίνακας ελέγχου, and when it is re-sent its dead rows are removed
+  first (`EficRepository.DeleteOrphanLinksAsync` — own store code, `STOREID` + `ITMSID` in the
+  WHERE, exactly one row per code or rollback). The report says «♻ N προϊόντα είχαν διαγραφεί
+  από το PointToOrder και στάλθηκαν ξανά — M παλιές αντιστοιχίσεις καθαρίστηκαν».
 - **Sizes, step 1 — read them, hold them back.** Fix: `PRLD` is unique on
   `PRLSID+ITMSID+ITMVID`, and the catalog and category-picker joins ignored `ITMVID`, so a
   product with sizes was read once per size — pushed twice or three times, counted double.

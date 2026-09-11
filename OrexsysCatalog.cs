@@ -38,6 +38,11 @@ namespace CatalogBridge
         // listed here counts as size 0 - that is every row written before size support.
         public Dictionary<string, long> LinkSizes { get; } = new(StringComparer.OrdinalIgnoreCase);
 
+        // Codes whose offer no longer exists on the platform (deleted there by hand). Moved out
+        // of ExternalCodes by PushRules.DropOrphanLinks so the product counts as not sent; the
+        // rows are removed from EFIC when the product is sent again.
+        public List<string> OrphanCodes { get; } = new();
+
         public long SizeOfCode(string code) => LinkSizes.TryGetValue(code, out long id) ? id : 0;
 
         public bool IsSizeLinked(long itmvId)

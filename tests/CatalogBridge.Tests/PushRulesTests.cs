@@ -145,6 +145,30 @@ namespace CatalogBridge.Tests
             Assert.AreEqual(2, PushRules.PendingUnits(inactive, Separate).Count);
         }
 
+        // Seen live 11/09 on demo 1110: every product deleted on PointToOrder by hand, and
+        // the sync still said «όλα συγχρονισμένα» because the EFIC rows were still there.
+        [TestMethod]
+        public void LinksToDeletedOffersCountAsNoLink()
+        {
+            var deleted = Product(Xl);
+            deleted.ExternalCodes.Add("26889"); deleted.ExternalCodes.Add("26890"); deleted.LinkSizes["26890"] = 17;
+            var alive = Product(); alive.ItmsId = 200; alive.ExternalCodes.Add("26887");
+            var orexsys = new OrexsysCatalogSnapshot();
+            orexsys.Products.Add(deleted); orexsys.Products.Add(alive);
+            var platform = new CatalogSnapshot { CatalogId = 1 };
+            var offer = new CatalogOffer { OfferId = 26887, Name = "ΠΡΟΙΟΝ" }; offer.CodeCandidates.Add("26887");
+            platform.Offers.Add(offer);
+
+            int affected = PushRules.DropOrphanLinks(orexsys, platform);
+
+            Assert.AreEqual(1, affected);
+            CollectionAssert.AreEquivalent(new[] { "26889", "26890" }, deleted.OrphanCodes);
+            Assert.AreEqual(0, deleted.ExternalCodes.Count);
+            Assert.AreEqual(2, PushRules.SendableUnits(deleted, Separate).Count, "sent again, both sizes");
+            Assert.AreEqual(1, alive.ExternalCodes.Count, "a live link is untouched");
+            Assert.AreEqual(0, PushRules.SendableUnits(alive, Separate).Count);
+        }
+
         [TestMethod]
         public void SizesTextShowsEachSizeWithItsPriceOrADash()
         {
