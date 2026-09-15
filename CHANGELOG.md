@@ -3,7 +3,7 @@
 All notable changes to CatalogBridge (Γέφυρα Καταλόγου). Versions are semantic; each
 released version is a git tag `vX.Y.Z` on `master` with the exe attached to the GitHub Release.
 
-## [1.1.1] — 2026-09-11
+## [1.1.1] — 2026-09-15
 
 - **EFIC rows now carry `SALESNAME`** (= `NAME`, the platform name), matching a row Orexsys
   itself creates for PointToOrder (owner's reference: `SALESNAME = NAME`, `ITMVID 0`,
