@@ -281,6 +281,14 @@ namespace CatalogBridge
             return ((int)response.StatusCode, await response.Content.ReadAsStringAsync());
         }
 
+        public async Task<(int Status, string Body)> ProbePutAsync(string path, object payload)
+        {
+            var response = await SendAuthorizedAsync(() => http.PutAsJsonAsync(
+                $"{baseUrl}{path}", payload));
+
+            return ((int)response.StatusCode, await response.Content.ReadAsStringAsync());
+        }
+
         public async Task<(int Status, string Body)> ProbeDeleteAsync(string path)
         {
             var response = await SendAuthorizedAsync(() => http.DeleteAsync($"{baseUrl}{path}"));
