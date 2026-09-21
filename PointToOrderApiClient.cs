@@ -281,6 +281,126 @@ namespace CatalogBridge
             return ((int)response.StatusCode, await response.Content.ReadAsStringAsync());
         }
 
+        // ---- customers (ported from ΔΙΑΧΕΙΡΙΣΗ, where each behaviour was verified live) ----
+        //
+        // customers/search-all, NOT customers/search: plain /search answers 500 «Failed to
+        // write request» for every input (also seen here on store 1110, 18/09/2026). E-mail
+        // matching is exact and case-insensitive.
+
+        public async Task<List<PlatformCustomer>> GetCustomersAsync()
+        {
+            var all = new List<PlatformCustomer>();
+            for (int page = 0; page < 200; page++)
+            {
+                int current = page;
+                var response = await SendAuthorizedAsync(() => http.PostAsJsonAsync(
+                    $"{baseUrl}/api/v1/stores/{storeId}/customers/search-all?page={current}&size=100",
+                    new Dictionary<string, object> { ["customerType"] = "ALL" }));
+
+                string body = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode)
+                    throw new PointToOrderException(
+                        $"Η ανάγνωση πελατών από το PointToOrder απέτυχε ({(int)response.StatusCode}): {body}");
+
+                using var doc = JsonDocument.Parse(body);
+                if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+                    break;
+
+                foreach (var c in data.EnumerateArray())
+                {
+                    string Text(string key) =>
+                        c.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "").Trim() : "";
+                    all.Add(new PlatformCustomer(
+                        ReadId(c, "id"), Text("name"), Text("email"), Text("phoneNumber"), Text("memberCode"),
+                        c.TryGetProperty("registered", out var r) && r.ValueKind == JsonValueKind.True));
+                }
+
+                int totalPages = doc.RootElement.TryGetProperty("totalPages", out var tp) && tp.ValueKind == JsonValueKind.Number
+                    ? tp.GetInt32() : 1;
+                if (page + 1 >= totalPages) break;
+            }
+            return all;
+        }
+
+        // The platform's security filter answers 400 SECURITY_REQUEST_BLOCKED for some values - seen
+        // 21/09/2026 for any @example.com address (a known fake domain); real addresses pass.
+        private static string Explain(string body) => body.Contains("SECURITY_REQUEST_BLOCKED")
+            ? "το PointToOrder απέρριψε το αίτημα για λόγους ασφαλείας — συνήθως επειδή το e-mail δεν είναι πραγματικό (π.χ. @example.com)"
+            : body;
+
+        // The platform's own customer id (the invite endpoint takes nothing else): by e-mail
+        // first, then by card.
+        public async Task<long?> FindCustomerIdAsync(string? email, string? memberCode)
+        {
+            foreach (var criteria in new[]
+            {
+                string.IsNullOrWhiteSpace(email) ? null : new Dictionary<string, object> { ["email"] = email!.Trim() },
+                string.IsNullOrWhiteSpace(memberCode) ? null : new Dictionary<string, object> { ["memberCode"] = memberCode!.Trim() },
+            })
+            {
+                if (criteria == null) continue;
+                var response = await SendAuthorizedAsync(() => http.PostAsJsonAsync(
+                    $"{baseUrl}/api/v1/stores/{storeId}/customers/search-all?page=0&size=1", criteria));
+
+                string body = await response.Content.ReadAsStringAsync();
+                if (!response.IsSuccessStatusCode)
+                    throw new PointToOrderException(
+                        $"Η αναζήτηση στο PointToOrder απέτυχε ({(int)response.StatusCode}): {Explain(body)}");
+
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Array &&
+                    data.GetArrayLength() > 0)
+                {
+                    long id = ReadId(data[0], "id");
+                    if (id != 0) return id;
+                }
+            }
+            return null;
+        }
+
+        // True = created. False = the platform refused it as a duplicate: a repeated card is
+        // 400 CUSTOMER_VOUCHER_ALREADY_PRESENT, a repeated e-mail 409 «Email already exists»
+        // (the e-mail is unique across the WHOLE platform, the search only covers this store).
+        // Anything else throws. phoneNumber must be a Greek mobile - see PointToOrderPhone.
+        public async Task<bool> CreateCustomerAsync(
+            string firstName, string lastName, string memberCode, string email, string phoneNumber)
+        {
+            var response = await SendAuthorizedAsync(() => http.PostAsJsonAsync(
+                $"{baseUrl}/api/v1/stores/{storeId}/customers/create",
+                new Dictionary<string, object>
+                {
+                    ["firstName"] = firstName,
+                    ["lastName"] = lastName,
+                    ["memberCode"] = memberCode,
+                    ["email"] = email,
+                    ["phoneNumber"] = phoneNumber,
+                }));
+
+            if (response.IsSuccessStatusCode) return true;
+
+            string body = await response.Content.ReadAsStringAsync();
+            if (response.StatusCode == HttpStatusCode.BadRequest && body.Contains("CUSTOMER_VOUCHER_ALREADY_PRESENT"))
+                return false;
+            if (response.StatusCode == HttpStatusCode.Conflict &&
+                body.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            throw new PointToOrderException($"Αποτυχία δημιουργίας πελάτη ({(int)response.StatusCode}): {Explain(body)}");
+        }
+
+        // PointToOrder's own «Invite to Register» e-mail. A real e-mail, cannot be recalled.
+        public async Task InviteCustomerAsync(long customerId)
+        {
+            var response = await SendAuthorizedAsync(() => http.PostAsync(
+                $"{baseUrl}/api/v1/stores/{storeId}/customers/{customerId}/invite", null));
+
+            if (!response.IsSuccessStatusCode)
+            {
+                string body = await response.Content.ReadAsStringAsync();
+                throw new PointToOrderException($"Η αποστολή πρόσκλησης απέτυχε ({(int)response.StatusCode}): {body}");
+            }
+        }
+
         public async Task<(int Status, string Body)> ProbePutAsync(string path, object payload)
         {
             var response = await SendAuthorizedAsync(() => http.PutAsJsonAsync(

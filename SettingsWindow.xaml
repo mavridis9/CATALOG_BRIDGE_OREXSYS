@@ -191,6 +191,7 @@
                 <CheckBox x:Name="ShowCompareCheck" Content="Σύγκριση καταλόγων" Margin="0,2"/>
                 <CheckBox x:Name="ShowPushCheck" Content="Αποστολή προϊόντων" Margin="0,2"/>
                 <CheckBox x:Name="ShowEficCheck" Content="Αντιστοιχίσεις" Margin="0,2"/>
+                <CheckBox x:Name="ShowCustomersCheck" Content="Πελάτες (δημιουργία σε Orexsys + PointToOrder)" Margin="0,2"/>
             </StackPanel>
         </ScrollViewer>
 

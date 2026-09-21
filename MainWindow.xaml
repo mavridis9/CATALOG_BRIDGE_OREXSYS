@@ -44,6 +44,8 @@
                                  Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                     <RadioButton x:Name="EficNav" Content="Αντιστοιχίσεις" GroupName="Nav"
                                  Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
+                    <RadioButton x:Name="CustomersNav" Content="Πελάτες" GroupName="Nav"
+                                 Style="{StaticResource NavItem}" Checked="Nav_Checked"/>
                 </StackPanel>
 
                 <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">

@@ -64,7 +64,9 @@ Mavridis (`mavridis9`).
    PATCH (itemType / sellable / stockLevel / isStockCheckEnabled), delete offer/category.
    Orexsys: `EFIC` insert/update/delete (`EFICID` from the `efic_sq` trigger, deletes
    via Orexsys's `logdelete` audit), and — only with «Αντιστοίχιση παραγγελιών με e-mail» on —
-   `ALTER TRIGGER EFOM_BIUD_TRG` through `EfomTriggerGuard` (owner decision 21/09/2026).
+   `ALTER TRIGGER EFOM_BIUD_TRG` through `EfomTriggerGuard` (owner decision 21/09/2026), and —
+   from the «Πελάτες» screen — `CUST` + `CUSP` INSERT for a new customer (never update/delete).
+   PointToOrder additionally: create customer, send invitation.
    **Nothing else in the database is ever written.**
 6. **`hierarchyLevel: "PARENT"` is required** on create; missing fields surface as `500`.
 7. **New offers are born hidden** (`isSellable=false`); the flow flips them visible when
@@ -177,3 +179,11 @@ git-ignored and excluded from publish. The sidebar shows the version.
   start). «Off» never removes — ΔΙΑΧΕΙΡΙΣΗ keeps the same patch on at LIGHTHOUSE and the two must
   not fight; removal is an explicit button. Needs Orexsys closed everywhere for the ALTER. Test
   fixture = the real vendor trigger (`tests/.../Fixtures/EFOM_BIUD_TRG_vendor.sql`).
+- **«Πελάτες» (21/09).** Owner decision: ONLY the shop creates customers, once, for both systems
+  (`CustomersView`, `NewCustomerWindow`, `CustomerDirectory`; `PointToOrderPhone`/`EmailValidator`
+  ported from ΔΙΑΧΕΙΡΙΣΗ). Card → `CUST.CARDNO` and P2O `memberCode`; e-mail is the link (same
+  upper+trim match as the trigger). Invitation only by button. The shop cannot edit a
+  self-registered P2O account (403 «only he can change their details») — that is why accounts are
+  created by the shop. Still open: showing TILL orders in the customer's P2O history —
+  `external-order` is loyalty-only/invisible, admin `POST /api/v2/user/stores/{id}/orders`
+  answers 500 in every shape tried; next idea = capture what the admin «Order Capture» screen sends.

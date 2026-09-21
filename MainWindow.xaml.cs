@@ -14,6 +14,7 @@ namespace CatalogBridge
         private readonly CompareView compare = new();
         private readonly PushView push = new();
         private readonly EficView efic = new();
+        private readonly CustomersView customers = new();
         private readonly StockSyncService stockSync = new();
 
         public MainWindow()
@@ -48,7 +49,8 @@ namespace CatalogBridge
                 ReferenceEquals(sender, DashNav) ? dashboard :
                 ReferenceEquals(sender, CompareNav) ? compare :
                 ReferenceEquals(sender, PushNav) ? push :
-                ReferenceEquals(sender, EficNav) ? (object)efic :
+                ReferenceEquals(sender, EficNav) ? efic :
+                ReferenceEquals(sender, CustomersNav) ? (object)customers :
                 sync;
         }
 
@@ -93,12 +95,14 @@ namespace CatalogBridge
             CompareNav.Visibility = settings.ShowCompare ? Visibility.Visible : Visibility.Collapsed;
             PushNav.Visibility = settings.ShowPush ? Visibility.Visible : Visibility.Collapsed;
             EficNav.Visibility = settings.ShowEfic ? Visibility.Visible : Visibility.Collapsed;
+            CustomersNav.Visibility = settings.ShowCustomers ? Visibility.Visible : Visibility.Collapsed;
 
             bool currentHidden =
                 (DashNav.IsChecked == true && !settings.ShowDashboard) ||
                 (CompareNav.IsChecked == true && !settings.ShowCompare) ||
                 (PushNav.IsChecked == true && !settings.ShowPush) ||
-                (EficNav.IsChecked == true && !settings.ShowEfic);
+                (EficNav.IsChecked == true && !settings.ShowEfic) ||
+                (CustomersNav.IsChecked == true && !settings.ShowCustomers);
             if (currentHidden) SyncNav.IsChecked = true;
 
             string database = System.IO.Path.GetFileName(settings.Database);

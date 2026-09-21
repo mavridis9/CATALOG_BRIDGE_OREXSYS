@@ -34,6 +34,29 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **Νέα οθόνη «Πελάτες»: ο πελάτης δημιουργείται μία φορά, και στα δύο συστήματα.** Owner
+  decision 21/09/2026: only the shop creates customers. «Νέος πελάτης» takes name, card,
+  e-mail and (optional) mobile and creates the customer in Orexsys (`CUST`: name in
+  FNAME+LNAME, card in `CARDNO`, e-mail, mobile; a `CUSP` row for the mobile — one transaction,
+  CUSTID from Orexsys's trigger) and then on PointToOrder (card = `memberCode`). Because the
+  e-mail is on both sides from the start, the customer's first online order already finds them
+  through the e-mail-only trigger — verified on a copy of STAVROS.FDB. A card or e-mail already
+  on another Orexsys customer is refused (a duplicate e-mail would make the trigger pick one at
+  random). Logic and traps ported from ΔΙΑΧΕΙΡΙΣΗ: `customers/search-all` (plain `search` is
+  broken server-side), Created vs already-there vs *rejected as duplicate* (e-mail is unique
+  across the whole platform) reported separately, names split so the platform does not double
+  them, and the phone sent is a Greek mobile or a stand-in built from the CUSTID (anything else
+  passes creation and then makes P2O refuse the customer's orders). A platform failure never
+  undoes the Orexsys customer: «Αποστολή στο PointToOrder» retries from the list. **The
+  invitation e-mail is never automatic** — «Αποστολή πρόσκλησης...» sends it on request
+  (confirmation defaulting to No; the date is remembered in `customer_invites.txt`). The list
+  shows the Orexsys customers that carry an e-mail next to the P2O accounts, matched on e-mail
+  exactly as the trigger matches (upper + trim): ✓ και στα δύο / ← μόνο στο Orexsys / → μόνο στο
+  PointToOrder / ⛔ same e-mail on 2+ Orexsys customers, plus a note when the card differs.
+  Every action is logged to `backups\customers.log`. Enabled with Ρυθμίσεις → Οθόνες τεχνικού →
+  «Πελάτες». Found on the way: the shop cannot edit a self-registered P2O account (403), admin
+  order-create answers 500, and P2O's security filter blocks `@example.com` addresses (explained
+  in Greek). 8 unit tests; 12/12 on the scratch copy with the P2O side read-only.
 - **Αντιστοίχιση παραγγελιών μόνο με e-mail (Ρυθμίσεις → «Παραγγελίες PointToOrder»).** Customer
   login is mandatory on the platform (owner, 21/09), so every order carries
   `customerDetails.customerEmail` in `EFOM.JSON`. Ticking the option patches Orexsys's

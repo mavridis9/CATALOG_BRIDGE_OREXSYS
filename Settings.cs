@@ -99,6 +99,7 @@ namespace CatalogBridge
         public bool ShowCompare { get; init; }
         public bool ShowPush { get; init; }
         public bool ShowEfic { get; init; }
+        public bool ShowCustomers { get; init; }
 
         // The store code new EFIC rows are scoped by (EFIC.STOREID, e.g. PO11521). Normally
         // read from EFST at runtime; this override exists for fresh installations where EFST
@@ -161,6 +162,7 @@ namespace CatalogBridge
                 ShowCompare = Get("ShowCompare", "false") == "true",
                 ShowPush = Get("ShowPush", "false") == "true",
                 ShowEfic = Get("ShowEfic", "false") == "true",
+                ShowCustomers = Get("ShowCustomers", "false") == "true",
             };
         }
 
@@ -215,6 +217,7 @@ namespace CatalogBridge
                 $"ShowCompare={(settings.ShowCompare ? "true" : "false")}",
                 $"ShowPush={(settings.ShowPush ? "true" : "false")}",
                 $"ShowEfic={(settings.ShowEfic ? "true" : "false")}",
+                $"ShowCustomers={(settings.ShowCustomers ? "true" : "false")}",
             };
 
             File.WriteAllLines(IniPath, lines);

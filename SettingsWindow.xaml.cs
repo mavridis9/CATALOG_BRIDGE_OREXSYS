@@ -105,6 +105,7 @@ namespace CatalogBridge
             ShowCompareCheck.IsChecked = settings.ShowCompare;
             ShowPushCheck.IsChecked = settings.ShowPush;
             ShowEficCheck.IsChecked = settings.ShowEfic;
+            ShowCustomersCheck.IsChecked = settings.ShowCustomers;
         }
 
         private static void SelectComboText(ComboBox combo, string value)
@@ -147,6 +148,7 @@ namespace CatalogBridge
             ShowCompare = ShowCompareCheck.IsChecked == true,
             ShowPush = ShowPushCheck.IsChecked == true,
             ShowEfic = ShowEficCheck.IsChecked == true,
+            ShowCustomers = ShowCustomersCheck.IsChecked == true,
         };
 
         private string savedEficCode = "";
