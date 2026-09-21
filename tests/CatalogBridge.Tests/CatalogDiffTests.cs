@@ -46,6 +46,18 @@ public class CatalogDiffTests
 
     // ---- matching ------------------------------------------------------------------------
 
+    // Option-group mode: one offer for the whole product - no «(Κανονικό)» label (seen 21/09).
+    [TestMethod]
+    public void ProductWithSizes_SingleOffer_HasNoSizeLabel()
+    {
+        var pita = Product(205, "ΠΙΤΑ ΓΥΡΟΣ", codes: new[] { "27121" });
+        pita.Sizes.Add(new OrexsysSize(17, "XL", 4m));
+
+        var r = Diff(new[] { pita }, new[] { Offer(27121, "ΠΙΤΑ ΓΥΡΟΣ") });
+
+        Assert.AreEqual("ΠΙΤΑ ΓΥΡΟΣ", r.Rows.Single().OrexsysName);
+    }
+
     // A product sent as separate items per size has one code per size: every size online is
     // its own row (so a product switched off at the till switches off ALL its sizes), named
     // with the size, and none of them is reported as "only on PointToOrder".

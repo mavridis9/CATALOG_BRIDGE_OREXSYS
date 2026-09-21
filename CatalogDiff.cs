@@ -36,9 +36,17 @@ namespace CatalogBridge
 
         // The size this row is about, when the pair is one size of a product sent as separate
         // items («ΤΟΣΤ ΖΑΜΠΟΝ ΚΑΣΕΡΙ (XL)»); EFIC.ITMVID via the matched code.
-        public string SizeName =>
-            Orexsys == null || Offer == null || MatchedBy != MatchKind.ByCode ? ""
-            : Orexsys.SizeName(Orexsys.SizeOfCode(Offer.OfferId.ToString()));
+        // A product with a single link (one offer, sizes as an option group) gets no label:
+        // that offer is the whole product, not its «Κανονικό» size.
+        public string SizeName
+        {
+            get
+            {
+                if (Orexsys == null || Offer == null || MatchedBy != MatchKind.ByCode) return "";
+                long itmvId = Orexsys.SizeOfCode(Offer.OfferId.ToString());
+                return itmvId == 0 && Orexsys.ExternalCodes.Count <= 1 ? "" : Orexsys.SizeName(itmvId);
+            }
+        }
 
         public string OrexsysName =>
             Orexsys == null ? "" : SizeName.Length > 0 ? $"{Orexsys.Name} ({SizeName})" : Orexsys.Name;

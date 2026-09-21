@@ -20,6 +20,9 @@ namespace CatalogBridge
         public string OrexsysCode { get; set; } = "";
         public string OrexsysName { get; set; } = "";
 
+        // ITMS.ITMCID of the product this row points at (0 when none) - for CategoryScope.
+        public long CategoryId { get; set; }
+
         // The size (ITMV) this row stands for; 0 = the product itself. Shown blank for 0 so
         // the size-less majority of rows stays uncluttered.
         public long ItmvId { get; set; }
@@ -129,7 +132,7 @@ namespace CatalogBridge
             // (Not "(@store = '' OR ...)" - Firebird types the parameter from the '' literal as
             // CHAR(0) and truncates it.)
             const string sql = @"
-                SELECT e.EFICID, e.STOREID, e.CODE, e.NAME, e.ITMSID, e.ITMVID,
+                SELECT e.EFICID, e.STOREID, e.CODE, e.NAME, e.ITMSID, e.ITMVID, i.ITMCID,
                        i.CODE AS ICODE, i.NAME AS INAME, c.ISEXTRA, v.NAME AS VNAME
                 FROM EFIC e
                 LEFT JOIN ITMS i ON i.ITMSID = e.ITMSID
@@ -152,6 +155,7 @@ namespace CatalogBridge
                     Name = ReadString(reader, "NAME"),
                     ItmsId = reader["ITMSID"] == DBNull.Value ? 0 : Convert.ToInt64(reader["ITMSID"]),
                     ItmvId = reader["ITMVID"] == DBNull.Value ? 0 : Convert.ToInt64(reader["ITMVID"]),
+                    CategoryId = reader["ITMCID"] == DBNull.Value ? 0 : Convert.ToInt64(reader["ITMCID"]),
                     SizeName = ReadString(reader, "VNAME"),
                     OrexsysCode = ReadString(reader, "ICODE"),
                     OrexsysName = ReadString(reader, "INAME"),

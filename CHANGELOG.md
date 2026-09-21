@@ -34,6 +34,15 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **The chosen categories now scope every technician screen** (owner request 21/09): Σύγκριση,
+  Πίνακας ελέγχου and Αντιστοιχίσεις show only the products of the categories ticked in
+  Ρυθμίσεις («Όλες» = no filter), and say so. On the PointToOrder side an unlinked product
+  counts when its P2O category holds a product linked to a chosen category (a category renamed
+  in the preview still counts) or has the same name as a chosen Orexsys category
+  (`CategoryScope`). Αντιστοιχίσεις keeps a row pointing at no product visible (it is a fault).
+  Συγχρονισμός is unchanged: switching off online what is off at the till still covers every
+  category. Also: a product sent once with a size option group no longer shows «(Κανονικό)»
+  in Σύγκριση — the label appears only when each size is its own P2O product.
 - **«Επαναφορά από την αρχή» (Ρυθμίσεις → Επαναφορά).** Empties the PointToOrder store and the
   PointToOrder rows of EFIC so everything can be sent again. The dialog first reads and shows
   exactly what goes: every product, every category and every size option group of the store in

@@ -63,7 +63,13 @@ namespace CatalogBridge
                 var platform = await api.GetCatalogAsync();
 
                 PushRules.DropOrphanLinks(orexsys, platform);
-                var diff = CatalogDiff.Build(orexsys, platform, settings);
+                // Only the categories chosen in Ρυθμίσεις (CategoryScope); «Όλες» = everything.
+                var diff = CategoryScope.Filter(CatalogDiff.Build(orexsys, platform, settings),
+                    orexsys, platform, settings);
+                var scopedCategories = CategoryScope.PlatformCategories(orexsys, platform, settings);
+                int onlineCount = CategoryScope.IsFiltered(settings)
+                    ? platform.Offers.Count(o => scopedCategories.Contains(o.CategoryId)) : platform.Offers.Count;
+                int orexsysCount = orexsys.Products.Count(p => CategoryScope.Includes(p, settings));
 
                 OkCount.Text = diff.CountOf(DiffStatus.Identical).ToString();
                 PriceCount.Text = diff.CountOf(DiffStatus.HiddenOnline).ToString();
@@ -86,8 +92,9 @@ namespace CatalogBridge
                 NoDiffText.Visibility = hidden.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
                 HeaderSubText.Text = $"Κατάστημα {settings.ApiStoreId} · " +
-                                     $"{platform.Offers.Count} προϊόντα online · " +
-                                     $"{orexsys.Products.Count} προϊόντα Orexsys";
+                                     $"{onlineCount} προϊόντα online · " +
+                                     $"{orexsysCount} προϊόντα Orexsys" +
+                                     (CategoryScope.IsFiltered(settings) ? " (επιλεγμένες κατηγορίες)" : "");
 
                 // Products that would be sent but have no price in the chosen column: said out
                 // loud, or «Για αποστολή: 0» reads as "all done" (PushRules.IsUnpriced).

@@ -57,10 +57,20 @@ namespace CatalogBridge
                 // modifiers on another item's line, and none of the 435 genuine EFIC rows
                 // targets one, so the pickers never offer them.
                 var orexsys = await OrexsysCatalog.LoadAsync(settings);
-                orexsysProducts = orexsys.Products.Where(p => !p.IsExtra).ToList();
 
                 using var api = new PointToOrderApiClient(settings);
                 var platform = await api.GetCatalogAsync();
+
+                // Only the categories chosen in Ρυθμίσεις (CategoryScope): the rows whose
+                // product is in them (a row pointing at no product is a fault and stays
+                // visible), the pickers' products, and the unlinked PointToOrder products of
+                // the matching PointToOrder categories.
+                var scopedPlatformCategories = CategoryScope.PlatformCategories(orexsys, platform, settings);
+                bool filtered = CategoryScope.IsFiltered(settings);
+                if (filtered)
+                    rows = rows.Where(r => r.ItmsId == 0 || settings.IncludesCategory(r.CategoryId)).ToList();
+                orexsysProducts = orexsys.Products
+                    .Where(p => !p.IsExtra && CategoryScope.Includes(p, settings)).ToList();
 
                 // Validated: empty if the configured code belongs to Wolt / efood.
                 storeCode = await EficRepository.LoadStoreCodeAsync(settings);
@@ -83,6 +93,7 @@ namespace CatalogBridge
                 var mappedCodes = rows.Select(r => r.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
                 unmappedOffers = platform.Offers
                     .Where(o => !mappedCodes.Contains(o.OfferId.ToString()))
+                    .Where(o => !filtered || scopedPlatformCategories.Contains(o.CategoryId))
                     .OrderBy(o => o.CategoryName).ThenBy(o => o.Name)
                     .ToList();
 
@@ -95,7 +106,8 @@ namespace CatalogBridge
                 var message = new StringBuilder();
                 message.Append($"{rows.Count} αντιστοιχίσεις EFIC · {onExtras} σε extra · " +
                                $"{orphaned} ορφανές (δεν υπάρχουν πλέον στο PointToOrder) · " +
-                               $"{unmappedOffers.Count} προϊόντα PointToOrder χωρίς αντιστοίχιση.");
+                               $"{unmappedOffers.Count} προϊόντα PointToOrder χωρίς αντιστοίχιση." +
+                               (filtered ? " " + CategoryScope.Note(settings) : ""));
 
                 ShowStatus(message.ToString(), onExtras + orphaned > 0 ? Warn : Good);
 

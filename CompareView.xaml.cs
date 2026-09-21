@@ -84,7 +84,8 @@ namespace CatalogBridge
                 using var api = new PointToOrderApiClient(settings);
                 platformSnapshot = await api.GetCatalogAsync();
 
-                diff = CatalogDiff.Build(orexsysSnapshot, platformSnapshot, settings);
+                diff = CategoryScope.Filter(CatalogDiff.Build(orexsysSnapshot, platformSnapshot, settings),
+                    orexsysSnapshot, platformSnapshot, settings);
 
                 ApplyFilter();
                 UpdateCounters();
@@ -112,10 +113,19 @@ namespace CatalogBridge
         {
             if (diff == null || orexsysSnapshot == null || platformSnapshot == null) return;
 
+            // Counted inside the chosen categories only, like the rows (CategoryScope).
+            var scoped = CategoryScope.PlatformCategories(orexsysSnapshot, platformSnapshot, settings);
+            bool filtered = CategoryScope.IsFiltered(settings);
+            int orexsysCount = orexsysSnapshot.Products.Count(p => CategoryScope.Includes(p, settings));
+            int platformCount = filtered
+                ? platformSnapshot.Offers.Count(o => scoped.Contains(o.CategoryId))
+                : platformSnapshot.Offers.Count;
+
             var message = new StringBuilder();
-            message.Append($"{orexsysSnapshot.Products.Count} προϊόντα Orexsys · ");
-            message.Append($"{platformSnapshot.Offers.Count} προϊόντα PointToOrder · ");
+            message.Append($"{orexsysCount} προϊόντα Orexsys · ");
+            message.Append($"{platformCount} προϊόντα PointToOrder · ");
             message.Append($"ταίριασμα: {diff.MatchedByCode} με κωδικό, {diff.MatchedByName} με όνομα. ");
+            if (filtered) message.Append(CategoryScope.Note(settings) + " ");
 
             Brush colour = Normal;
 
@@ -234,7 +244,8 @@ namespace CatalogBridge
                     row.Offer.Sellable = sellable;
                 }
 
-                diff = CatalogDiff.Build(orexsysSnapshot!, platformSnapshot!, settings);
+                diff = CategoryScope.Filter(CatalogDiff.Build(orexsysSnapshot!, platformSnapshot!, settings),
+                    orexsysSnapshot!, platformSnapshot!, settings);
 
                 ApplyFilter();
                 UpdateCounters();
