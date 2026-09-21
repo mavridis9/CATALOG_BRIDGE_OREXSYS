@@ -58,6 +58,15 @@ namespace CatalogBridge
 
             try
             {
+                // Orders arriving under a different code than the one links are written with
+                // can never match (21/09, Stavros): stop before anything is created.
+                var feed = await EficRepository.CheckOrderFeedAsync(settings);
+                if (feed.Mismatch)
+                {
+                    ShowStatus(feed.Message, Bad);
+                    return;
+                }
+
                 var orexsys = await OrexsysCatalog.LoadAsync(settings);
 
                 using var api = new PointToOrderApiClient(settings);

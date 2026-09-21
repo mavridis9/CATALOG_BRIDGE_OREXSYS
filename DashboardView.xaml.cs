@@ -92,6 +92,15 @@ namespace CatalogBridge
                 // Products that would be sent but have no price in the chosen column: said out
                 // loud, or «Για αποστολή: 0» reads as "all done" (PushRules.IsUnpriced).
                 int unpriced = orexsys.Products.Count(p => PushRules.IsUnpriced(p, settings));
+                var feed = await EficRepository.CheckOrderFeedAsync(settings);
+                if (feed.Mismatch)
+                {
+                    StatusText.Text = feed.Message;
+                    StatusText.Foreground = new System.Windows.Media.SolidColorBrush(
+                        System.Windows.Media.Color.FromRgb(0xC4, 0x2B, 0x1C));
+                    return;
+                }
+                StatusText.ClearValue(System.Windows.Controls.TextBlock.ForegroundProperty);
                 StatusText.Text = $"Τελευταία ανανέωση {DateTime.Now:HH:mm}. " +
                                   $"Ταίριασμα: {diff.MatchedByCode} με κωδικό, {diff.MatchedByName} με όνομα." +
                                   (unpriced > 0

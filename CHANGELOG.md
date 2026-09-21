@@ -34,6 +34,17 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **Order-feed check: orders arriving under another code than «Σύνδεση P2O» are a stop.** Seen
+  21/09 on Stavros: the connector sends store 1110 as `PO4897`, EFST said `PO1110` and the app
+  wrote its EFIC links under `1` — the first real order arrived with no product on any line.
+  `EficRepository.LoadOrderFeedAsync` (read-only) lists the codes P2O orders arrived under in the
+  last 30 days (`EFOM.STOREID`; Wolt / efood / any non-P2O EFST line left out) and
+  `OrderFeedCheck` flags every one that is not ours. Συγχρονισμός stops before creating anything
+  with a red message naming the arriving code and the fix (choose it in Ρυθμίσεις, or first
+  correct the EFST line in Orexsys if it has no such line); Αποστολή refuses to send; Πίνακας
+  ελέγχου shows it in red; the «Σύνδεση P2O» hint in Ρυθμίσεις says which code to choose.
+  Checked read-only: Stavros with `PO4897` quiet, with `1` alarms naming `PO4897`, STOA copy
+  (Wolt/efood only) quiet.
 - **Fix: products with no price are no longer skipped in silence.** Seen 18/09 on Stavros: the
   four products of the chosen categories (ΣΑΛΑΤΑ, ΚΥΡΙΩΣ) had restaurant and take-away prices but
   Delivery 0,00; with «Τιμή» = Delivery they were skipped and Συγχρονισμός said «όλα

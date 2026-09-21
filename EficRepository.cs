@@ -163,6 +163,56 @@ namespace CatalogBridge
             return rows;
         });
 
+        // The store codes PointToOrder orders arrived under in the last 30 days (EFOM.STOREID),
+        // for OrderFeedCheck. Orders of Wolt / efood / any non-P2O EFST connection are left out,
+        // and so are orders whose APPTYPE is another platform's; an order under a code EFST
+        // does not know at all IS included - that is exactly the broken case (21/09, Stavros:
+        // connector sent PO4897, EFST said PO1110, app wrote «1»). Read-only.
+        public static Task<(string OwnCode, List<OrderFeedCode> Arriving)> LoadOrderFeedAsync(Settings settings) =>
+            Task.Run(() =>
+            {
+                using var connection = new FbConnection(settings.ToConnectionString());
+                connection.Open();
+
+                string own = ResolveStoreCode(connection, settings);
+
+                const string sql = @"
+                    SELECT TRIM(m.STOREID) AS CODE, COUNT(*) AS ORDERS, MAX(m.ORDERDATETIME) AS LASTORDER,
+                           MAX((SELECT COUNT(*) FROM EFST s WHERE s.EFSTID = m.STOREID)) AS INEFST,
+                           SUM((SELECT COUNT(*) FROM EFOD d
+                                 WHERE d.EFOMID = m.EFOMID AND d.ITMSID IS NULL
+                                   AND COALESCE(d.CODE, '') NOT IN ('', '0', '-1'))) AS UNMATCHED
+                    FROM EFOM m
+                    WHERE m.ORDERDATETIME >= DATEADD(-30 DAY TO CURRENT_TIMESTAMP)
+                      AND m.STOREID IS NOT NULL
+                      AND COALESCE(m.APPTYPE, 60) = 60
+                      AND NOT EXISTS (SELECT 1 FROM EFST s
+                                       WHERE s.EFSTID = m.STOREID
+                                         AND NOT (COALESCE(s.APPTYPE, -1) = 60 OR COALESCE(s.NAME, '') CONTAINING 'P2O'))
+                    GROUP BY TRIM(m.STOREID)";
+
+                var arriving = new List<OrderFeedCode>();
+                using var command = new FbCommand(sql, connection);
+                using var reader = command.ExecuteReader();
+                while (reader.Read())
+                {
+                    arriving.Add(new OrderFeedCode(
+                        ReadString(reader, "CODE"),
+                        Convert.ToInt32(reader["ORDERS"]),
+                        reader["UNMATCHED"] == DBNull.Value ? 0 : Convert.ToInt32(reader["UNMATCHED"]),
+                        reader["LASTORDER"] == DBNull.Value ? null : Convert.ToDateTime(reader["LASTORDER"]),
+                        reader["INEFST"] != DBNull.Value && Convert.ToInt32(reader["INEFST"]) > 0));
+                }
+
+                return (own, arriving);
+            });
+
+        public static async Task<OrderFeedResult> CheckOrderFeedAsync(Settings settings)
+        {
+            var (own, arriving) = await LoadOrderFeedAsync(settings);
+            return OrderFeedCheck.Evaluate(own, arriving);
+        }
+
         // The P2O store code new EFIC rows are written with. Empty when neither Settings nor
         // EFST names a usable P2O store - the caller then has to ask the operator for it.
         public static Task<string> LoadStoreCodeAsync(Settings settings) => Task.Run(() =>

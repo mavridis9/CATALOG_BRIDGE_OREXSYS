@@ -38,6 +38,7 @@ namespace CatalogBridge
         private List<PushItem> unmapped = new();
         private CatalogSnapshot? platform;
         private string storeCode = "";
+        private string feedMismatch = "";   // OrderFeedCheck message; non-empty blocks sending
 
         public PushView()
         {
@@ -78,6 +79,9 @@ namespace CatalogBridge
                 // Validated: empty if the configured code belongs to Wolt / efood.
                 storeCode = await EficRepository.LoadStoreCodeAsync(settings);
 
+                // Orders arriving under another code than ours can never match (OrderFeedCheck).
+                feedMismatch = (await EficRepository.CheckOrderFeedAsync(settings)).Message;
+
                 // Links to offers deleted on PointToOrder count as no link (PushRules).
                 int orphaned = PushRules.DropOrphanLinks(orexsys, platform);
 
@@ -107,7 +111,10 @@ namespace CatalogBridge
                     ? $"Κωδικός EFIC: {storeCode}."
                     : "⚠ Δεν βρέθηκε κωδικός EFIC (κενό EFST) — ορίστε το «EficStoreCode» στις Ρυθμίσεις πριν την αποστολή.");
 
-                ShowStatus(message.ToString(), storeCode.Length > 0 ? Normal : Warn);
+                if (feedMismatch.Length > 0)
+                    ShowStatus(feedMismatch + "\n" + message, Bad);
+                else
+                    ShowStatus(message.ToString(), storeCode.Length > 0 ? Normal : Warn);
 
                 PushButton.IsEnabled = true;
                 SelectAllButton.IsEnabled = true;
@@ -168,6 +175,12 @@ namespace CatalogBridge
             if (selected.Count == 0)
             {
                 ShowStatus("Επιλέξτε πρώτα ένα ή περισσότερα προϊόντα.", Warn);
+                return;
+            }
+
+            if (feedMismatch.Length > 0)
+            {
+                ShowStatus(feedMismatch, Bad);
                 return;
             }
 

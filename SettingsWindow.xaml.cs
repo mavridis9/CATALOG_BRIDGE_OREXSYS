@@ -197,6 +197,18 @@ namespace CatalogBridge
                     Label = $"{current} — χωρίς γραμμή στο EFST (μόνο για δοκιμές)",
                 });
 
+            // The codes P2O orders actually arrived under (last 30 days) - the hint warns when
+            // the choice is not one of them. A failure here only loses the warning.
+            try
+            {
+                arrivingCodes = (await EficRepository.LoadOrderFeedAsync(settings)).Arriving
+                    .Select(a => a.Code.Trim()).Where(c => c.Length > 0).ToList();
+            }
+            catch
+            {
+                arrivingCodes = new List<string>();
+            }
+
             eficConnections = connections;
             EficConnectionCombo.ItemsSource = options;
             EficConnectionCombo.SelectedItem =
@@ -207,6 +219,7 @@ namespace CatalogBridge
         }
 
         private List<EficRepository.EfstConnection>? eficConnections;
+        private List<string> arrivingCodes = new();
 
         private void EficConnectionCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
             UpdateEficHint();
@@ -224,6 +237,22 @@ namespace CatalogBridge
                 .Select(c => c.Name));
             string noP2O = "Η βάση δεν έχει σύνδεση PointToOrder στο EFST" +
                            (others.Length > 0 ? $" (υπάρχουν μόνο: {others})" : "") + ".";
+
+            // Checked first: the one choice that makes every online order arrive unmatched.
+            var foreign = arrivingCodes.Where(c => c != selected).Distinct().ToList();
+            if (foreign.Count > 0)
+            {
+                string codes = string.Join(", ", foreign.Select(c => $"«{c}»"));
+                EficHintText.Foreground = Bad;
+                EficHintText.Text =
+                    $"⛔ Οι παραγγελίες του PointToOrder φτάνουν με κωδικό {codes}" +
+                    (selected.Length > 0 ? $", όχι «{selected}»" : "") + ". " +
+                    (pointToOrder.Any(c => foreign.Contains(c.EfstId))
+                        ? $"Επιλέξτε τη σύνδεση {codes} παραπάνω."
+                        : $"Αλλάξτε στο Orexsys τον κωδικό της γραμμής PointToOrder του EFST σε {codes} και πατήστε «Έλεγχος βάσης».") +
+                    " Μέχρι τότε οι παραγγελίες δεν ταιριάζουν με τα προϊόντα και ο Συγχρονισμός δεν στέλνει τίποτα.";
+                return;
+            }
 
             if (selected.Length == 0)
             {
