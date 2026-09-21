@@ -88,6 +88,8 @@ namespace CatalogBridge
             EficConnectionCombo.SelectedIndex = savedEficCode.Length > 0 ? 0 : -1;
 
             StockSyncCheck.IsChecked = settings.StockSyncEnabled;
+            EmailCorrelationCheck.IsChecked = settings.EmailOrderCorrelation;
+            Loaded += async (s, e) => await RefreshEmailStateAsync(settings);
 
             SizeModeCombo.ItemsSource = new List<SizeModeOption>
             {
@@ -137,6 +139,7 @@ namespace CatalogBridge
             PriceSource = (PriceSourceCombo.SelectedItem as PriceSourceOption)?.Value ?? PriceSource.Delivery,
             EficStoreCode = (EficConnectionCombo.SelectedItem as EficConnectionOption)?.Code ?? "",
             StockSyncEnabled = StockSyncCheck.IsChecked == true,
+            EmailOrderCorrelation = EmailCorrelationCheck.IsChecked == true,
             SizeMode = (SizeModeCombo.SelectedItem as SizeModeOption)?.Value ?? SizeMode.SeparateItems,
             SyncAllCategories = syncAllCategories,
             SyncCategoryIds = string.Join(",", syncCategoryIds.OrderBy(id => id)),
@@ -439,18 +442,99 @@ namespace CatalogBridge
             }
         }
 
-        private void SaveButton_Click(object sender, RoutedEventArgs e)
+        private async void SaveButton_Click(object sender, RoutedEventArgs e)
         {
+            Settings saved;
             try
             {
-                Settings.Save(BuildFromForm());
-                DialogResult = true;
-                Close();
+                saved = BuildFromForm();
+                Settings.Save(saved);
             }
             catch (Exception ex)
             {
                 ShowStatus("Η αποθήκευση απέτυχε:\n" + ex.Message, Bad);
+                return;
             }
+
+            // The e-mail correlation is applied now, not left to the next start, so the
+            // technician sees at once whether Orexsys accepted the change.
+            if (saved.EmailOrderCorrelation && saved.IsDatabaseConfigured)
+            {
+                SaveButton.IsEnabled = false;
+                ShowStatus("Εφαρμογή της αντιστοίχισης με e-mail στο Orexsys...", Normal);
+                var result = await Task.Run(() => EfomTriggerGuard.Run(saved, BackupFolder));
+                SaveButton.IsEnabled = true;
+
+                if (result.Outcome == EfomTriggerGuard.Outcome.Patched)
+                    MessageBox.Show("Η αντιστοίχιση παραγγελιών με e-mail εφαρμόστηκε στο Orexsys.\n\n" +
+                                    $"Αντίγραφο του αρχικού trigger: {result.BackupPath}",
+                                    "Ρυθμίσεις", MessageBoxButton.OK, MessageBoxImage.Information);
+                else if (result.IsProblem)
+                {
+                    MessageBox.Show("Οι ρυθμίσεις αποθηκεύτηκαν, αλλά η αντιστοίχιση με e-mail ΔΕΝ εφαρμόστηκε:\n\n" +
+                                    result.Message, "Ρυθμίσεις", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    await RefreshEmailStateAsync(saved);
+                    return;   // stay open so the problem is visible
+                }
+            }
+
+            DialogResult = true;
+            Close();
+        }
+
+        private static string BackupFolder => System.IO.Path.Combine(AppContext.BaseDirectory, "backups");
+
+        // Shows what the live trigger holds right now - read-only - and offers removal only
+        // when the patch is actually there.
+        private async Task RefreshEmailStateAsync(Settings settings)
+        {
+            if (!settings.IsDatabaseConfigured)
+            {
+                EmailStateText.Text = "Κατάσταση στη βάση: —";
+                return;
+            }
+            try
+            {
+                var state = await Task.Run(() => EfomTriggerGuard.ReadState(settings));
+                EmailStateText.Foreground = state == EfomTriggerGuard.State.Patched ? Good : Muted;
+                EmailStateText.Text = state switch
+                {
+                    EfomTriggerGuard.State.Patched => "Κατάσταση στη βάση: ✓ ενεργή — οι παραγγελίες ταιριάζουν με e-mail.",
+                    EfomTriggerGuard.State.NotPatched => "Κατάσταση στη βάση: δεν έχει εφαρμοστεί — οι παραγγελίες ταιριάζουν μόνο με τηλέφωνο.",
+                    _ => "Κατάσταση στη βάση: το trigger EFOM_BIUD_TRG δεν υπάρχει σε αυτή τη βάση.",
+                };
+                RemoveEmailButton.Visibility = state == EfomTriggerGuard.State.Patched
+                    ? Visibility.Visible : Visibility.Collapsed;
+            }
+            catch (Exception ex)
+            {
+                EmailStateText.Foreground = Warn;
+                EmailStateText.Text = "Κατάσταση στη βάση: δεν ήταν δυνατή η ανάγνωση — " + ex.Message;
+            }
+        }
+
+        private async void RemoveEmailButton_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildFromForm();
+            var sure = MessageBox.Show(
+                "Να αφαιρεθεί η αντιστοίχιση με e-mail από το trigger του Orexsys;\n\n" +
+                "Οι παραγγελίες θα ταιριάζουν πάλι μόνο με τηλέφωνο. Αν το ίδιο Orexsys το χρησιμοποιεί " +
+                "και η ΔΙΑΧΕΙΡΙΣΗ, εκείνη θα την ξαναβάλει στην επόμενη εκκίνησή της.",
+                "Αφαίρεση", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (sure != MessageBoxResult.Yes) return;
+
+            RemoveEmailButton.IsEnabled = false;
+            var result = await Task.Run(() => EfomTriggerGuard.Remove(settings, BackupFolder));
+            RemoveEmailButton.IsEnabled = true;
+
+            if (result.Outcome == EfomTriggerGuard.Outcome.Removed)
+                EmailCorrelationCheck.IsChecked = false;
+            MessageBox.Show(result.Outcome == EfomTriggerGuard.Outcome.Removed
+                    ? "Η αντιστοίχιση με e-mail αφαιρέθηκε. Πατήστε Αποθήκευση για να κρατηθεί και η ρύθμιση."
+                    : result.Message,
+                "Αφαίρεση", MessageBoxButton.OK,
+                result.IsProblem ? MessageBoxImage.Warning : MessageBoxImage.Information);
+            await RefreshEmailStateAsync(settings);
         }
 
         private void CancelButton_Click(object sender, RoutedEventArgs e) => Close();

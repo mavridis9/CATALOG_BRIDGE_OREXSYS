@@ -34,6 +34,21 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **Αντιστοίχιση παραγγελιών με e-mail (Ρυθμίσεις → «Παραγγελίες PointToOrder»).** With customer
+  login mandatory on the platform, every order carries `customerDetails.customerEmail` in
+  `EFOM.JSON`. Ticking the option patches Orexsys's `EFOM_BIUD_TRG` (the trigger that picks the
+  customer of an incoming order) to match that e-mail against `CUST.EMAIL` first, keeping the
+  vendor's phone lookup as the fallback and storing the e-mail on a customer found by phone or
+  created. `EfomTriggerGuard` is ported unchanged from ΔΙΑΧΕΙΡΙΣΗ (same marker
+  `OREXSYS-EMAIL-CORRELATION-V1`, same five anchored edits, applied to whatever source is live,
+  all-or-nothing, backup to `backups\EFOM_BIUD_TRG_*.sql` first, `backups\efom_guard.log`), so
+  either program recognises the other's patch. Applied on «Αποθήκευση» in Ρυθμίσεις and re-checked
+  at every start (an Orexsys upgrade restores the vendor trigger). Off = the trigger is left
+  alone; «Αφαίρεση από το Orexsys...» reverses the five edits on request. Ρυθμίσεις shows the
+  live state. Tested: 7 unit tests on the real vendor trigger text (Stavros and STOA run the same
+  version); end to end on a copy of STAVROS.FDB, 10/10 — without the patch the logged-in order
+  went to the phone customer, with it to the e-mail customer, unknown e-mail fell back to phone
+  and stored the e-mail, removal restored the vendor trigger exactly.
 - **The chosen categories now scope every technician screen** (owner request 21/09): Σύγκριση,
   Πίνακας ελέγχου and Αντιστοιχίσεις show only the products of the categories ticked in
   Ρυθμίσεις («Όλες» = no filter), and say so. On the PointToOrder side an unlinked product
@@ -49,7 +64,7 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   «Κωδικός καταστ.» (not only what the app sent), and the EFIC rows per code — the own «Σύνδεση
   P2O» ticked, other P2O / leftover test codes offered unticked, Wolt / efood listed greyed as
   «δεν αγγίζεται ποτέ». It needs «ΔΙΑΓΡΑΦΗ» typed plus a Yes. Before deleting, the whole
-  catalogue (listing + every product detail) is saved to `backupsP2O_<store>_<time>_before_reset.json`
+  catalogue (listing + every product detail) is saved to `backups\P2O_<store>_<time>_before_reset.json`
   and EFIC to its usual CSV. Order: option choices → option groups → products → categories;
   the store is re-read afterwards and what is left is reported. Store **1046** is refused
   outright. EFIC side (`EficRepository.DeleteAllUnderCodesAsync`): own code must resolve, no

@@ -107,6 +107,32 @@ namespace CatalogBridge
                 : "Δεν έχει ρυθμιστεί ακόμα";
 
             stockSync.Apply(settings);
+            EnsureEmailCorrelation(settings);
+        }
+
+        // At every start (and after Ρυθμίσεις): if the e-mail correlation is on, make sure the
+        // patch is still in Orexsys's trigger - an Orexsys upgrade silently restores the vendor
+        // version. A no-op when it is there; «off» never touches the trigger.
+        private void EnsureEmailCorrelation(Settings settings)
+        {
+            if (!settings.EmailOrderCorrelation || !settings.IsDatabaseConfigured) return;
+
+            string folder = System.IO.Path.Combine(AppContext.BaseDirectory, "backups");
+            System.Threading.Tasks.Task.Run(() => EfomTriggerGuard.Run(settings, folder)).ContinueWith(t =>
+            {
+                if (t.IsFaulted) return;
+                var result = t.Result;
+                Dispatcher.Invoke(() =>
+                {
+                    if (result.Outcome == EfomTriggerGuard.Outcome.Patched)
+                        MessageBox.Show("Η αντιστοίχιση παραγγελιών με e-mail είχε αφαιρεθεί από το Orexsys " +
+                                        "(πιθανόν από αναβάθμιση) και εφαρμόστηκε ξανά.",
+                                        "Γέφυρα Καταλόγου", MessageBoxButton.OK, MessageBoxImage.Information);
+                    else if (result.IsProblem)
+                        MessageBox.Show("Η αντιστοίχιση παραγγελιών με e-mail ΔΕΝ είναι ενεργή στο Orexsys:\n\n" +
+                                        result.Message, "Γέφυρα Καταλόγου", MessageBoxButton.OK, MessageBoxImage.Warning);
+                });
+            });
         }
     }
 }

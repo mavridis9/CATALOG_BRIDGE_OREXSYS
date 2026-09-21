@@ -62,8 +62,10 @@ Mavridis (`mavridis9`).
    an EFIC code, which is a data anomaly and is shown rather than hidden.
 5. **Write surface is closed.** PointToOrder: create category, create offer, `changeStatus`
    PATCH (itemType / sellable / stockLevel / isStockCheckEnabled), delete offer/category.
-   Orexsys: `EFIC` insert/update/delete only (`EFICID` from the `efic_sq` trigger, deletes
-   via Orexsys's `logdelete` audit). **Nothing else in the database is ever written.**
+   Orexsys: `EFIC` insert/update/delete (`EFICID` from the `efic_sq` trigger, deletes
+   via Orexsys's `logdelete` audit), and — only with «Αντιστοίχιση παραγγελιών με e-mail» on —
+   `ALTER TRIGGER EFOM_BIUD_TRG` through `EfomTriggerGuard` (owner decision 21/09/2026).
+   **Nothing else in the database is ever written.**
 6. **`hierarchyLevel: "PARENT"` is required** on create; missing fields surface as `500`.
 7. **New offers are born hidden** (`isSellable=false`); the flow flips them visible when
    asked. "Switch off" = `itemType=Inactive` **and** `sellable=false`. An item off at the
@@ -166,3 +168,10 @@ git-ignored and excluded from publish. The sidebar shows the version.
   option groups, categories) and the P2O rows of EFIC, after a JSON backup of the catalogue and the
   usual EFIC CSV. Store 1046 is hard-refused in `ResetService.ProtectedStores`; Wolt/efood codes can
   never be selected or reached. Owner-requested so a demo can start clean.
+- **E-mail order correlation (21/09).** Owner made customer login mandatory on P2O, so every
+  order's JSON has `customerDetails.customerEmail`. `EfomTriggerGuard` (ported from
+  ΔΙΑΧΕΙΡΙΣΗ, same marker/edits; plus `ReadState`, `Remove`/`TryRevert`) patches
+  `EFOM_BIUD_TRG` when `Settings.EmailOrderCorrelation` is on (applied on save, re-checked at
+  start). «Off» never removes — ΔΙΑΧΕΙΡΙΣΗ keeps the same patch on at LIGHTHOUSE and the two must
+  not fight; removal is an explicit button. Needs Orexsys closed everywhere for the ALTER. Test
+  fixture = the real vendor trigger (`tests/.../Fixtures/EFOM_BIUD_TRG_vendor.sql`).

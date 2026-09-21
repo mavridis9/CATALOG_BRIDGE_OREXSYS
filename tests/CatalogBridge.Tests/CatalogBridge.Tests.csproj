@@ -21,4 +21,9 @@
     <ProjectReference Include="..\..\CatalogBridge.csproj" />
   </ItemGroup>
 
+  <!-- The vendor's EFOM_BIUD_TRG body exactly as Orexsys stores it (Stavros / STOA, 21/09/2026). -->
+  <ItemGroup>
+    <None Include="Fixtures\*.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

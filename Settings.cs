@@ -70,6 +70,12 @@ namespace CatalogBridge
         //                 as text in EFOD.OPTIONS (accepted by the owner).
         public SizeMode SizeMode { get; init; } = SizeMode.SeparateItems;
 
+        // Orders from PointToOrder attach to the Orexsys customer by the e-mail of the logged-in
+        // account (customerEmail in EFOM.JSON matched to CUST.EMAIL; phone as fallback) - done by
+        // EfomTriggerGuard patching Orexsys's EFOM_BIUD_TRG. On: applied on save and re-checked at
+        // every start. Off: the trigger is left alone (removal is an explicit button).
+        public bool EmailOrderCorrelation { get; init; }
+
         private HashSet<long>? syncCategories;
 
         public bool IncludesCategory(long itmcId)
@@ -148,6 +154,7 @@ namespace CatalogBridge
                 StockSyncEnabled = Get("StockSyncEnabled", "false") == "true",
                 SyncAllCategories = Get("SyncAllCategories", "true") != "false",
                 SyncCategoryIds = Get("SyncCategoryIds", ""),
+                EmailOrderCorrelation = Get("EmailOrderCorrelation", "false") == "true",
                 SizeMode = Enum.TryParse(Get("SizeMode", "SeparateItems"), true, out SizeMode sm)
                     ? sm : SizeMode.SeparateItems,
                 ShowDashboard = Get("ShowDashboard", "false") == "true",
@@ -199,6 +206,9 @@ namespace CatalogBridge
                 "; Προϊόντα με μεγέθη (ITMV): SeparateItems = ένα προϊόν P2O ανά μέγεθος,",
                 "; OptionGroup = ένα προϊόν με ομάδα επιλογών μεγέθους (το ταμείο δεν παίρνει μέγεθος).",
                 $"SizeMode={settings.SizeMode}",
+                "",
+                "; Αντιστοίχιση παραγγελιών PointToOrder με το e-mail του πελάτη (trigger EFOM_BIUD_TRG).",
+                $"EmailOrderCorrelation={(settings.EmailOrderCorrelation ? "true" : "false")}",
                 "",
                 "; Οθόνες τεχνικού (true = εμφανίζονται στο πλάι).",
                 $"ShowDashboard={(settings.ShowDashboard ? "true" : "false")}",
