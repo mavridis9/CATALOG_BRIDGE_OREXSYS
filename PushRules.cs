@@ -125,6 +125,12 @@ namespace CatalogBridge
             product.IsActive && (product.HasPrice || product.HasSizes) &&
             PendingUnits(product, settings).Count > 0;
 
+        // Would be sent, but has no price in the configured list and column - neither its own
+        // nor any size's. Reported by name so it is never skipped in silence.
+        public static bool IsUnpriced(OrexsysProduct product, Settings settings) =>
+            IsEligible(product, settings) && product.IsActive && product.ExternalCodes.Count == 0 &&
+            !product.HasPrice && !product.Sizes.Any(s => s.Price is decimal p && p > 0m);
+
         public static List<PushUnit> SendableUnits(OrexsysProduct product, Settings settings) =>
             IsSendable(product, settings) ? PendingUnits(product, settings) : new List<PushUnit>();
     }

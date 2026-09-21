@@ -89,8 +89,14 @@ namespace CatalogBridge
                                      $"{platform.Offers.Count} προϊόντα online · " +
                                      $"{orexsys.Products.Count} προϊόντα Orexsys";
 
+                // Products that would be sent but have no price in the chosen column: said out
+                // loud, or «Για αποστολή: 0» reads as "all done" (PushRules.IsUnpriced).
+                int unpriced = orexsys.Products.Count(p => PushRules.IsUnpriced(p, settings));
                 StatusText.Text = $"Τελευταία ανανέωση {DateTime.Now:HH:mm}. " +
-                                  $"Ταίριασμα: {diff.MatchedByCode} με κωδικό, {diff.MatchedByName} με όνομα.";
+                                  $"Ταίριασμα: {diff.MatchedByCode} με κωδικό, {diff.MatchedByName} με όνομα." +
+                                  (unpriced > 0
+                                      ? $" ⚠ {unpriced} προϊόντα δεν στέλνονται γιατί δεν έχουν τιμή «{settings.PriceSourceLabel}»."
+                                      : "");
             }
             catch (Exception ex)
             {

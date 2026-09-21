@@ -34,6 +34,14 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **Fix: products with no price are no longer skipped in silence.** Seen 18/09 on Stavros: the
+  four products of the chosen categories (ΣΑΛΑΤΑ, ΚΥΡΙΩΣ) had restaurant and take-away prices but
+  Delivery 0,00; with «Τιμή» = Delivery they were skipped and Συγχρονισμός said «όλα
+  συγχρονισμένα». Now `PushRules.IsUnpriced` finds every active, not-yet-sent product in a chosen
+  category with no price in the configured list/column (own or any size): Συγχρονισμός names
+  them («⚠ N ενεργά προϊόντα … ΔΕΝ στάλθηκαν γιατί δεν έχουν τιμή «Delivery» …») and, when
+  nothing else is to do, says «Τίποτα δεν στάλθηκε» in orange instead of «όλα συγχρονισμένα»;
+  Πίνακας ελέγχου adds the same warning. Prices are still never guessed from another column.
 - **Fix: a link to a product deleted on PointToOrder no longer counts as "sent".** Seen on
   demo 1110: every product deleted in the P2O admin, and Συγχρονισμός still reported «όλα
   συγχρονισμένα» because the EFIC rows were still there. Now an EFIC code whose offer is not

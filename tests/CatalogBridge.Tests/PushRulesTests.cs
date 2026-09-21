@@ -169,6 +169,25 @@ namespace CatalogBridge.Tests
             Assert.AreEqual(0, PushRules.SendableUnits(alive, Separate).Count);
         }
 
+        // Seen 18/09 on Stavros: four products in the chosen categories priced for restaurant
+        // and take-away with Delivery 0,00 - skipped, and the sync said everything was synced.
+        [TestMethod]
+        public void ProductWithoutPriceInTheChosenColumnIsReportedAsUnpriced()
+        {
+            var salad = Product(); salad.Price = 0m;
+            var steak = Product(new OrexsysSize(17, "XL", 0m)); steak.Price = 0m;
+            var tostWithPricedSize = Product(Xl); tostWithPricedSize.Price = 0m;
+            var linked = Product(); linked.Price = 0m; linked.ExternalCodes.Add("1");
+            var inactive = Product(); inactive.Price = 0m; inactive.IsActive = false;
+
+            Assert.IsTrue(PushRules.IsUnpriced(salad, Separate));
+            Assert.IsTrue(PushRules.IsUnpriced(steak, Options));
+            Assert.IsFalse(PushRules.IsUnpriced(tostWithPricedSize, Separate), "a priced size is sendable");
+            Assert.IsFalse(PushRules.IsUnpriced(linked, Separate), "already online");
+            Assert.IsFalse(PushRules.IsUnpriced(inactive, Separate), "switched off at the till");
+            Assert.IsFalse(PushRules.IsUnpriced(Product(), Separate));
+        }
+
         [TestMethod]
         public void SizesTextShowsEachSizeWithItsPriceOrADash()
         {

@@ -73,6 +73,20 @@ namespace CatalogBridge
                     .Where(p => PushRules.IsSendable(p, settings))
                     .ToList();
 
+                // Active, not yet online, in a chosen category - but with no price in the
+                // configured list/column, so nothing can be sent. Never skipped in silence:
+                // seen 18/09, four products priced for restaurant/take-away with Delivery 0,00
+                // and the sync said «όλα συγχρονισμένα».
+                var unpriced = orexsys.Products
+                    .Where(p => PushRules.IsUnpriced(p, settings))
+                    .ToList();
+                string unpricedNote = unpriced.Count == 0 ? "" :
+                    $"⚠ {unpriced.Count} ενεργά προϊόντα στις επιλεγμένες κατηγορίες ΔΕΝ στάλθηκαν γιατί " +
+                    $"δεν έχουν τιμή «{settings.PriceSourceLabel}» στον τιμοκατάλογο «{orexsys.PriceListName}»: " +
+                    string.Join(", ", unpriced.Take(6).Select(p => p.Name)) + (unpriced.Count > 6 ? ", ..." : "") +
+                    ". Βάλτε τιμή στο Orexsys ή αλλάξτε «Τιμή» στις Ρυθμίσεις.";
+                if (unpricedNote.Length > 0) results.Add(unpricedNote);
+
 
                 // Prices are deliberately not compared or touched: the PointToOrder prices
                 // travel into Orexsys with each order anyway, so the platform's price IS the
@@ -83,6 +97,14 @@ namespace CatalogBridge
 
                 if (newProducts.Count == 0 && deactivations.Count == 0)
                 {
+                    ResultsList.ItemsSource = results;
+                    ResultsCard.Visibility = results.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+                    if (unpriced.Count > 0)
+                    {
+                        ShowStatus($"Τίποτα δεν στάλθηκε: {unpriced.Count} προϊόντα δεν έχουν τιμή " +
+                                   $"«{settings.PriceSourceLabel}» (βλ. παρακάτω). ({DateTime.Now:HH:mm})", Warn);
+                        return;
+                    }
                     ShowStatus($"✓ Όλα συγχρονισμένα. {platform.Offers.Count} προϊόντα online, " +
                                $"καμία διαφορά. ({DateTime.Now:HH:mm})", Good);
                     return;
