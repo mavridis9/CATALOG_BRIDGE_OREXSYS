@@ -34,21 +34,22 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
-- **Αντιστοίχιση παραγγελιών με e-mail (Ρυθμίσεις → «Παραγγελίες PointToOrder»).** With customer
-  login mandatory on the platform, every order carries `customerDetails.customerEmail` in
-  `EFOM.JSON`. Ticking the option patches Orexsys's `EFOM_BIUD_TRG` (the trigger that picks the
-  customer of an incoming order) to match that e-mail against `CUST.EMAIL` first, keeping the
-  vendor's phone lookup as the fallback and storing the e-mail on a customer found by phone or
-  created. `EfomTriggerGuard` is ported unchanged from ΔΙΑΧΕΙΡΙΣΗ (same marker
-  `OREXSYS-EMAIL-CORRELATION-V1`, same five anchored edits, applied to whatever source is live,
-  all-or-nothing, backup to `backups\EFOM_BIUD_TRG_*.sql` first, `backups\efom_guard.log`), so
-  either program recognises the other's patch. Applied on «Αποθήκευση» in Ρυθμίσεις and re-checked
-  at every start (an Orexsys upgrade restores the vendor trigger). Off = the trigger is left
-  alone; «Αφαίρεση από το Orexsys...» reverses the five edits on request. Ρυθμίσεις shows the
-  live state. Tested: 7 unit tests on the real vendor trigger text (Stavros and STOA run the same
-  version); end to end on a copy of STAVROS.FDB, 10/10 — without the patch the logged-in order
-  went to the phone customer, with it to the e-mail customer, unknown e-mail fell back to phone
-  and stored the e-mail, removal restored the vendor trigger exactly.
+- **Αντιστοίχιση παραγγελιών μόνο με e-mail (Ρυθμίσεις → «Παραγγελίες PointToOrder»).** Customer
+  login is mandatory on the platform (owner, 21/09), so every order carries
+  `customerDetails.customerEmail` in `EFOM.JSON`. Ticking the option patches Orexsys's
+  `EFOM_BIUD_TRG` (the trigger that picks the customer of an incoming order): an order with an
+  e-mail is matched against `CUST.EMAIL` **only** — the phone is never consulted; no match means
+  Orexsys creates a new customer carrying that e-mail, which the person's next order finds. Only
+  an order without an e-mail keeps the vendor's phone lookup. `EfomTriggerGuard` is ported from
+  ΔΙΑΧΕΙΡΙΣΗ (same five anchored edits, applied to whatever source is live, all-or-nothing,
+  backup to `backups\EFOM_BIUD_TRG_*.sql` first, `backups\efom_guard.log`) with the lookup block
+  made e-mail-only (marker `OREXSYS-EMAIL-ONLY-V2`, alongside ΔΙΑΧΕΙΡΙΣΗ's
+  `OREXSYS-EMAIL-CORRELATION-V1` so that program still sees the trigger as patched); a trigger
+  carrying ΔΙΑΧΕΙΡΙΣΗ's e-mail-then-phone version is upgraded in place. Applied on «Αποθήκευση»
+  and re-checked at every start (an Orexsys upgrade restores the vendor trigger). Off = the
+  trigger is left alone; «Αφαίρεση από το Orexsys...» reverses the edits (either version) on
+  request. Ρυθμίσεις shows the live state. Tested: 11 unit tests on the real vendor trigger text
+  (Stavros and STOA run the same version); end to end on a copy of STAVROS.FDB, 12/12.
 - **The chosen categories now scope every technician screen** (owner request 21/09): Σύγκριση,
   Πίνακας ελέγχου and Αντιστοιχίσεις show only the products of the categories ticked in
   Ρυθμίσεις («Όλες» = no filter), and say so. On the PointToOrder side an unlinked product

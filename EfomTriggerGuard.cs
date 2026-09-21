@@ -12,7 +12,8 @@ namespace CatalogBridge
     // EFOM holds orders arriving from the online ordering platform, and that trigger decides
     // which existing CUST row an incoming order attaches to. The vendor's stock version matches
     // on phone number via CUSP; we match on the customerEmail carried in the order's JSON
-    // payload, falling back to phone so orders without an e-mail behave exactly as before.
+    // payload. CatalogBridge applies the e-mail-ONLY variant (V2, see BuildLookupEmailOnly): with an
+    // e-mail the phone is never used; only an order without one keeps the vendor phone lookup.
     //
     // A vendor update overwrites the trigger and silently restores phone-only matching, which is
     // invisible until customers stop being recognised. This runs once at startup, notices the
@@ -148,6 +149,86 @@ declare variable f_pos integer;";
                into :f_custid;
           end";
 
+        // ---- e-mail only (CatalogBridge, owner decision 21/09/2026) ------------------------
+        //
+        // Customer login is mandatory on PointToOrder, so every order carries customerEmail.
+        // With an e-mail the phone is NOT consulted at all: no match means Orexsys creates a
+        // new customer (edit C2 stores the e-mail on it), and the next order finds that one.
+        // Without an e-mail (cannot happen with login mandatory) the vendor's phone lookup is
+        // kept, so a stray guest order does not create a nameless customer every time.
+        //
+        // The V1 marker stays in the text as well, so ΔΙΑΧΕΙΡΙΣΗ - which only knows V1 - sees
+        // the trigger as already patched and leaves it alone. A trigger carrying V1 only (the
+        // e-mail-then-phone patch) is upgraded in place by swapping this one block.
+        public const string MarkerEmailOnly = "OREXSYS-EMAIL-ONLY-V2";
+
+        private static string BuildLookupEmailOnly(int emailColumnLength) => @"
+         f_custid = null;
+         /* " + Marker + @" */
+         /* " + MarkerEmailOnly + @": an order with an e-mail is matched by e-mail only, never by phone */
+         f_email = null;
+         begin
+           f_jsontxt = substring(cast(new.json as varchar(4000)) from 1 for 4000);
+           f_pos = position('""customerEmail""', f_jsontxt);
+           if (f_pos > 0) then
+            begin
+              f_work = substring(f_jsontxt from f_pos + 15 for 400);
+              f_pos = position('""', f_work);
+              if (f_pos > 0) then
+               begin
+                 f_work = substring(f_work from f_pos + 1 for 400);
+                 f_pos = position('""', f_work);
+                 if (f_pos > 1) then
+                   f_work = substring(f_work from 1 for f_pos - 1);
+                 else
+                   f_work = '';
+                 f_email = substring(f_work from 1 for 100);
+               end
+            end
+           when any do
+             f_email = null;
+         end
+         if (trim(coalesce(f_email, '')) = '') then f_email = null;
+
+         if (f_email is not null) then
+           select first 1 custid
+             from cust
+            where upper(trim(email)) = upper(trim(:f_email))
+             into :f_custid;
+         else
+          begin
+           --try to get customer by exact match on phone number
+           select first 1 custid
+             from cusp
+            where (phone = new.mobile) or
+                  (phone = new.landline)
+             into :f_custid;
+           --try to get customer by like phone number
+           if (:f_custid is null) then
+            select first 1 custid
+              from cusp
+             where (phone like '%' || new.mobile || '%') or
+                   (phone like '%' || new.landline || '%')
+               into :f_custid;
+          end";
+
+        // V1 (e-mail, then phone) → e-mail only: the one block swapped, exactly once.
+        public static bool TryUpgradeToEmailOnly(string source, int emailColumnLength,
+            out string upgraded, out string problem)
+        {
+            problem = "";
+            if (!TryReplaceExactlyOnce(source, BuildLookupReplacement(emailColumnLength),
+                    BuildLookupEmailOnly(emailColumnLength), out upgraded, out int count))
+            {
+                upgraded = "";
+                problem = count == 0
+                    ? "το σημείο B (customer lookup) δεν βρέθηκε όπως το αφήνει η έκδοση V1"
+                    : $"το σημείο B (customer lookup) βρέθηκε {count} φορές";
+                return false;
+            }
+            return true;
+        }
+
         // left(...) guards both write sites: f_email is varchar(100) but CUST.EMAIL is narrower
         // (VARCHAR(50) on both live databases). These writes are NOT inside the "when any do",
         // so an over-length address would raise string right truncation, the trigger would throw
@@ -202,17 +283,24 @@ declare variable f_pos integer;";
                         Message = $"Το trigger {TriggerName} δεν βρέθηκε στη βάση.",
                     };
 
-                if (source.Contains(Marker, StringComparison.Ordinal))
+                if (source.Contains(MarkerEmailOnly, StringComparison.Ordinal))
                     return new Result
                     {
                         Outcome = Outcome.AlreadyPatched,
-                        Message = "e-mail correlation active",
+                        Message = "e-mail correlation active (e-mail only)",
                     };
 
                 // Back up before touching anything - never patch without the original on disk.
                 string backupPath = WriteBackup(source, backupDirectory);
 
-                if (!TryTransform(source, emailLength, out string patched, out string problem))
+                // A trigger already carrying the e-mail-then-phone patch (V1, e.g. from
+                // ΔΙΑΧΕΙΡΙΣΗ) is upgraded in place; a vendor trigger gets all five edits.
+                bool upgrading = source.Contains(Marker, StringComparison.Ordinal);
+                string patched, problem;
+                bool ok = upgrading
+                    ? TryUpgradeToEmailOnly(source, emailLength, out patched, out problem)
+                    : TryTransform(source, emailLength, out patched, out problem);
+                if (!ok)
                     return new Result
                     {
                         Outcome = Outcome.NeedsManualReview,
@@ -247,7 +335,8 @@ declare variable f_pos integer;";
                     verifyConnection.Open();
                     after = ReadTriggerSource(verifyConnection);
                 }
-                if (after == null || !after.Contains(Marker, StringComparison.Ordinal))
+                if (after == null || !after.Contains(Marker, StringComparison.Ordinal) ||
+                    !after.Contains(MarkerEmailOnly, StringComparison.Ordinal))
                     return new Result
                     {
                         Outcome = Outcome.Failed,
@@ -267,7 +356,7 @@ declare variable f_pos integer;";
                 {
                     Outcome = Outcome.Patched,
                     BackupPath = backupPath,
-                    Message = "patched successfully",
+                    Message = upgrading ? "upgraded to e-mail only" : "patched successfully (e-mail only)",
                 };
             }
             catch (Exception ex)
@@ -282,7 +371,8 @@ declare variable f_pos integer;";
 
         // ---- CatalogBridge additions -----------------------------------------------------
 
-        public enum State { Patched, NotPatched, Missing }
+        // PatchedWithPhone = the V1 patch (e-mail, then phone) - upgraded by the next Run.
+        public enum State { Patched, PatchedWithPhone, NotPatched, Missing }
 
         // Read-only: is the patch in the live trigger right now? For the line in Ρυθμίσεις.
         public static State ReadState(Settings settings)
@@ -291,7 +381,8 @@ declare variable f_pos integer;";
             connection.Open();
             string? source = ReadTriggerSource(connection);
             return source == null ? State.Missing
-                 : source.Contains(Marker, StringComparison.Ordinal) ? State.Patched
+                 : source.Contains(MarkerEmailOnly, StringComparison.Ordinal) ? State.Patched
+                 : source.Contains(Marker, StringComparison.Ordinal) ? State.PatchedWithPhone
                  : State.NotPatched;
         }
 
@@ -381,7 +472,8 @@ declare variable f_pos integer;";
                 ("C3 (backfill e-mail)", BuildCardnoReplacement(emailColumnLength), AnchorCardno),
                 ("C2 (insert values)", BuildInsertValues(emailColumnLength), AnchorInsertValues),
                 ("C1 (insert columns)", ReplInsertColumns, AnchorInsertColumns),
-                ("B (customer lookup)", BuildLookupReplacement(emailColumnLength), AnchorLookup),
+                ("B (customer lookup)", source.Contains(MarkerEmailOnly, StringComparison.Ordinal)
+                    ? BuildLookupEmailOnly(emailColumnLength) : BuildLookupReplacement(emailColumnLength), AnchorLookup),
                 ("A (declarations)", ReplDeclare, AnchorDeclare),
             };
 
@@ -469,8 +561,10 @@ declare variable f_pos integer;";
         // Applies all three edits to the CURRENT source. Returns false, with a reason, if any
         // anchor is missing or ambiguous - in which case nothing is applied at all. A
         // half-applied patch is far worse than an unpatched trigger.
+        // emailOnly: CatalogBridge always applies the e-mail-only lookup; false gives ΔΙΑΧΕΙΡΙΣΗ's V1
+        // (e-mail, then phone) - kept for the tests of the in-place upgrade.
         public static bool TryTransform(string source, int emailColumnLength,
-            out string patched, out string problem)
+            out string patched, out string problem, bool emailOnly = true)
         {
             patched = "";
             problem = "";
@@ -478,7 +572,8 @@ declare variable f_pos integer;";
             var edits = new (string Name, string Anchor, string Replacement)[]
             {
                 ("A (declarations)", AnchorDeclare, ReplDeclare),
-                ("B (customer lookup)", AnchorLookup, BuildLookupReplacement(emailColumnLength)),
+                ("B (customer lookup)", AnchorLookup, emailOnly
+                    ? BuildLookupEmailOnly(emailColumnLength) : BuildLookupReplacement(emailColumnLength)),
                 ("C1 (insert columns)", AnchorInsertColumns, ReplInsertColumns),
                 ("C2 (insert values)", AnchorInsertValues, BuildInsertValues(emailColumnLength)),
                 ("C3 (backfill e-mail)", AnchorCardno, BuildCardnoReplacement(emailColumnLength)),

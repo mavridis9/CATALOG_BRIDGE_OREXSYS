@@ -160,8 +160,8 @@
 
                 <TextBlock Text="Παραγγελίες PointToOrder" Style="{StaticResource SectionHeader}"/>
                 <CheckBox x:Name="EmailCorrelationCheck" Margin="0,2"
-                          Content="Αντιστοίχιση παραγγελιών με το e-mail του πελάτη"
-                          ToolTip="Η παραγγελία πηγαίνει στον πελάτη του Orexsys με το ίδιο e-mail (CUST.EMAIL) με τον λογαριασμό του PointToOrder. Αν δεν βρεθεί, ισχύει η αντιστοίχιση με τηλέφωνο του Orexsys."/>
+                          Content="Αντιστοίχιση παραγγελιών μόνο με το e-mail του πελάτη"
+                          ToolTip="Η παραγγελία πηγαίνει στον πελάτη του Orexsys με το ίδιο e-mail (CUST.EMAIL) με τον λογαριασμό του PointToOrder. Το τηλέφωνο δεν χρησιμοποιείται. Αν κανείς δεν έχει αυτό το e-mail, το Orexsys δημιουργεί νέο πελάτη με αυτό."/>
                 <TextBlock x:Name="EmailStateText" TextWrapping="Wrap" Margin="22,4,0,0" FontSize="12"
                            Foreground="#5B6572" Text="Κατάσταση στη βάση: έλεγχος..."/>
                 <StackPanel Orientation="Horizontal" Margin="22,6,0,0">
@@ -169,7 +169,7 @@
                             Visibility="Collapsed" Click="RemoveEmailButton_Click"/>
                 </StackPanel>
                 <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5B6572" FontSize="12"
-                           Text="Αλλάζει το trigger EFOM_BIUD_TRG του Orexsys (με αντίγραφο ασφαλείας πρώτα) ώστε κάθε παραγγελία PointToOrder να ταιριάζει με τον πελάτη από το e-mail του λογαριασμού του. Εφαρμόζεται με την Αποθήκευση και ελέγχεται σε κάθε εκκίνηση — μια αναβάθμιση του Orexsys μπορεί να την αναιρέσει. Χρειάζεται το Orexsys κλειστό σε όλους τους σταθμούς τη στιγμή της αλλαγής."/>
+                           Text="Αλλάζει το trigger EFOM_BIUD_TRG του Orexsys (με αντίγραφο ασφαλείας πρώτα) ώστε κάθε παραγγελία PointToOrder να ταιριάζει με τον πελάτη μόνο από το e-mail του λογαριασμού του — όχι από το τηλέφωνο. Αν κανένας πελάτης δεν έχει αυτό το e-mail, δημιουργείται νέος με αυτό. Εφαρμόζεται με την Αποθήκευση και ελέγχεται σε κάθε εκκίνηση — μια αναβάθμιση του Orexsys μπορεί να την αναιρέσει. Χρειάζεται το Orexsys κλειστό σε όλους τους σταθμούς τη στιγμή της αλλαγής."/>
 
                 <TextBlock Text="Απόθεμα" Style="{StaticResource SectionHeader}"/>
                 <CheckBox x:Name="StockSyncCheck" Margin="0,2"

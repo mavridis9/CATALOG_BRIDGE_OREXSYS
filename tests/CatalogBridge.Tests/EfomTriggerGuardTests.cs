@@ -25,8 +25,8 @@ namespace CatalogBridge.Tests
             StringAssert.Contains(patched, "position('\"customerEmail\"', f_jsontxt)");
             StringAssert.Contains(patched, "where upper(trim(email)) = upper(trim(:f_email))");
             Assert.AreEqual(2, Regex.Matches(patched, @"left\(:f_email, 50\)").Count, "both write sites capped at CUST.EMAIL's width");
-            // The phone lookup stays, as the fallback, inside «if (:f_custid is null)».
-            StringAssert.Contains(Squash(patched), "if (:f_custid is null) then begin --try to get customer by exact match on phone number");
+            // The phone lookup survives only for orders WITHOUT an e-mail (see the e-mail-only tests).
+            StringAssert.Contains(Squash(patched), "else begin --try to get customer by exact match on phone number");
         }
 
         [TestMethod]
@@ -75,6 +75,50 @@ namespace CatalogBridge.Tests
         {
             Assert.IsFalse(EfomTriggerGuard.TryRevert(Vendor, 50, out string restored, out _));
             Assert.AreEqual("", restored);
+        }
+
+        // Owner decision 21/09: with an e-mail in the order the phone is never consulted.
+        [TestMethod]
+        public void EmailOnly_PhoneLookupRunsOnlyWhenThereIsNoEmail()
+        {
+            EfomTriggerGuard.TryTransform(Vendor, 50, out string patched, out _);
+            string s = Squash(patched);
+
+            StringAssert.Contains(patched, EfomTriggerGuard.MarkerEmailOnly);
+            StringAssert.Contains(s, "where upper(trim(email)) = upper(trim(:f_email)) into :f_custid; " +
+                                     "else begin --try to get customer by exact match on phone number");
+            Assert.IsFalse(s.Contains("into :f_custid; if (:f_custid is null) then begin --try to get customer by exact"),
+                "the e-mail-then-phone fallback (V1) must be gone");
+        }
+
+        // ΔΙΑΧΕΙΡΙΣΗ checks only for the V1 marker: it must still see the trigger as patched.
+        [TestMethod]
+        public void EmailOnly_KeepsTheV1MarkerForΔΙΑΧΕΙΡΙΣΗ()
+        {
+            EfomTriggerGuard.TryTransform(Vendor, 50, out string patched, out _);
+
+            StringAssert.Contains(patched, EfomTriggerGuard.Marker);
+        }
+
+        // A database patched by ΔΙΑΧΕΙΡΙΣΗ (V1, e-mail then phone) is upgraded in place.
+        [TestMethod]
+        public void V1IsUpgradedInPlaceToEmailOnly()
+        {
+            EfomTriggerGuard.TryTransform(Vendor, 50, out string v1, out _, emailOnly: false);
+            EfomTriggerGuard.TryTransform(Vendor, 50, out string direct, out _);
+
+            Assert.IsTrue(EfomTriggerGuard.TryUpgradeToEmailOnly(v1, 50, out string upgraded, out string problem), problem);
+            Assert.AreEqual(Squash(direct), Squash(upgraded));
+            Assert.IsFalse(EfomTriggerGuard.TryUpgradeToEmailOnly(upgraded, 50, out _, out _), "no second upgrade");
+        }
+
+        [TestMethod]
+        public void RemoveWorksFromEitherVersion()
+        {
+            EfomTriggerGuard.TryTransform(Vendor, 50, out string v1, out _, emailOnly: false);
+
+            Assert.IsTrue(EfomTriggerGuard.TryRevert(v1, 50, out string restored, out string problem), problem);
+            Assert.AreEqual(Squash(Vendor), Squash(restored));
         }
 
         [TestMethod]

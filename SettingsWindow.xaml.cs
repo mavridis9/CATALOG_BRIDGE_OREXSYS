@@ -499,11 +499,13 @@ namespace CatalogBridge
                 EmailStateText.Foreground = state == EfomTriggerGuard.State.Patched ? Good : Muted;
                 EmailStateText.Text = state switch
                 {
-                    EfomTriggerGuard.State.Patched => "Κατάσταση στη βάση: ✓ ενεργή — οι παραγγελίες ταιριάζουν με e-mail.",
+                    EfomTriggerGuard.State.Patched => "Κατάσταση στη βάση: ✓ ενεργή — οι παραγγελίες ταιριάζουν μόνο με e-mail.",
+                    EfomTriggerGuard.State.PatchedWithPhone => "Κατάσταση στη βάση: παλιά έκδοση (e-mail και μετά τηλέφωνο) — " +
+                                                               "με την Αποθήκευση γίνεται «μόνο e-mail».",
                     EfomTriggerGuard.State.NotPatched => "Κατάσταση στη βάση: δεν έχει εφαρμοστεί — οι παραγγελίες ταιριάζουν μόνο με τηλέφωνο.",
                     _ => "Κατάσταση στη βάση: το trigger EFOM_BIUD_TRG δεν υπάρχει σε αυτή τη βάση.",
                 };
-                RemoveEmailButton.Visibility = state == EfomTriggerGuard.State.Patched
+                RemoveEmailButton.Visibility = state is EfomTriggerGuard.State.Patched or EfomTriggerGuard.State.PatchedWithPhone
                     ? Visibility.Visible : Visibility.Collapsed;
             }
             catch (Exception ex)

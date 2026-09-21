@@ -169,7 +169,9 @@ git-ignored and excluded from publish. The sidebar shows the version.
   usual EFIC CSV. Store 1046 is hard-refused in `ResetService.ProtectedStores`; Wolt/efood codes can
   never be selected or reached. Owner-requested so a demo can start clean.
 - **E-mail order correlation (21/09).** Owner made customer login mandatory on P2O, so every
-  order's JSON has `customerDetails.customerEmail`. `EfomTriggerGuard` (ported from
+  order's JSON has `customerDetails.customerEmail`. E-MAIL ONLY (owner, 21/09): with an e-mail the
+  phone is never used (marker `OREXSYS-EMAIL-ONLY-V2` + V1 kept for ΔΙΑΧΕΙΡΙΣΗ; V1 upgraded in place).
+  `EfomTriggerGuard` (ported from
   ΔΙΑΧΕΙΡΙΣΗ, same marker/edits; plus `ReadState`, `Remove`/`TryRevert`) patches
   `EFOM_BIUD_TRG` when `Settings.EmailOrderCorrelation` is on (applied on save, re-checked at
   start). «Off» never removes — ΔΙΑΧΕΙΡΙΣΗ keeps the same patch on at LIGHTHOUSE and the two must
