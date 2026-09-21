@@ -163,6 +163,92 @@ namespace CatalogBridge
             return rows;
         });
 
+        // What a full reset would find in EFIC, one line per STOREID. Other platforms' codes
+        // (Wolt / efood - a non-P2O EFST line) are listed only so the dialog can say they stay.
+        public enum EficCodeKind { Own, OtherPointToOrder, NoEfstLine, OtherPlatform }
+
+        public sealed record EficCodeSummary(string Code, int Rows, EficCodeKind Kind, string EfstName);
+
+        public static Task<List<EficCodeSummary>> LoadCodeSummaryAsync(Settings settings) => Task.Run(() =>
+        {
+            using var connection = new FbConnection(settings.ToConnectionString());
+            connection.Open();
+            string own = ResolveStoreCode(connection, settings);
+
+            const string sql = @"
+                SELECT TRIM(e.STOREID) AS CODE, COUNT(*) AS N,
+                       MAX(s.NAME) AS EFSTNAME, MAX(s.APPTYPE) AS APPTYPE, COUNT(s.EFSTID) AS INEFST
+                FROM EFIC e
+                LEFT JOIN EFST s ON s.EFSTID = e.STOREID
+                GROUP BY TRIM(e.STOREID)
+                ORDER BY 2 DESC";
+
+            var list = new List<EficCodeSummary>();
+            using var command = new FbCommand(sql, connection);
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                string code = ReadString(reader, "CODE");
+                string name = ReadString(reader, "EFSTNAME");
+                bool inEfst = Convert.ToInt32(reader["INEFST"]) > 0;
+                bool p2o = reader["APPTYPE"] != DBNull.Value && Convert.ToInt32(reader["APPTYPE"]) == 60 ||
+                           name.Contains("P2O", StringComparison.OrdinalIgnoreCase);
+
+                var kind = code == own && own.Length > 0 ? EficCodeKind.Own
+                         : !inEfst ? EficCodeKind.NoEfstLine
+                         : p2o ? EficCodeKind.OtherPointToOrder
+                         : EficCodeKind.OtherPlatform;
+                list.Add(new EficCodeSummary(code, Convert.ToInt32(reader["N"]), kind, name));
+            }
+            return list;
+        });
+
+        // The reset: removes EVERY row under the given PointToOrder codes. Fenced like every
+        // other write, and harder: the own code must resolve (so a database with no P2O setup
+        // is refused outright), no code may be empty or another platform's EFST line (Wolt /
+        // efood rows can never be reached), the whole table is backed up first, and the rows
+        // deleted must equal the rows counted inside the same transaction, or it rolls back.
+        public static Task<int> DeleteAllUnderCodesAsync(Settings settings, IReadOnlyCollection<string> codes) =>
+            Task.Run(() =>
+            {
+                if (codes.Count == 0) return 0;
+
+                using var connection = new FbConnection(settings.ToConnectionString());
+                connection.Open();
+
+                RequireOwnStoreCode(connection, settings);
+                foreach (string code in codes)
+                    if (code.Trim().Length == 0 || BelongsToOtherPlatform(connection, code))
+                        throw new EficSafetyException(
+                            $"Ο κωδικός «{code}» ανήκει σε άλλη πλατφόρμα (π.χ. Wolt / efood) ή είναι κενός. " +
+                            "Δεν διαγράφηκε τίποτα.");
+
+                EnsureBackedUp(connection, settings);
+
+                using var transaction = connection.BeginTransaction();
+                int expected = 0, deleted = 0;
+                foreach (string code in codes)
+                {
+                    using var count = new FbCommand("SELECT COUNT(*) FROM EFIC WHERE STOREID = @store", connection, transaction);
+                    count.Parameters.AddWithValue("@store", code);
+                    expected += Convert.ToInt32(count.ExecuteScalar());
+
+                    using var delete = new FbCommand("DELETE FROM EFIC WHERE STOREID = @store", connection, transaction);
+                    delete.Parameters.AddWithValue("@store", code);
+                    deleted += delete.ExecuteNonQuery();
+                }
+
+                if (deleted != expected)
+                {
+                    transaction.Rollback();
+                    throw new EficSafetyException(
+                        $"Αναμένονταν {expected} γραμμές, διαγράφηκαν {deleted}. Έγινε αναίρεση — δεν άλλαξε τίποτα.");
+                }
+
+                transaction.Commit();
+                return deleted;
+            });
+
         // The store codes PointToOrder orders arrived under in the last 30 days (EFOM.STOREID),
         // for OrderFeedCheck. Orders of Wolt / efood / any non-P2O EFST connection are left out,
         // and so are orders whose APPTYPE is another platform's; an order under a code EFST

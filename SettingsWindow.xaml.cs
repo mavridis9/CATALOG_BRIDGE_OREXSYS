@@ -148,6 +148,13 @@ namespace CatalogBridge
 
         private string savedEficCode = "";
 
+        // Uses what is on the form (store, database, «Σύνδεση P2O») - the dialog names the
+        // store and every EFIC code before anything is deleted.
+        private void ResetButton_Click(object sender, RoutedEventArgs e)
+        {
+            new ResetWindow(BuildFromForm()) { Owner = this }.ShowDialog();
+        }
+
         private class SizeModeOption
         {
             public SizeMode Value { get; init; }

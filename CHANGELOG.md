@@ -34,6 +34,20 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **«Επαναφορά από την αρχή» (Ρυθμίσεις → Επαναφορά).** Empties the PointToOrder store and the
+  PointToOrder rows of EFIC so everything can be sent again. The dialog first reads and shows
+  exactly what goes: every product, every category and every size option group of the store in
+  «Κωδικός καταστ.» (not only what the app sent), and the EFIC rows per code — the own «Σύνδεση
+  P2O» ticked, other P2O / leftover test codes offered unticked, Wolt / efood listed greyed as
+  «δεν αγγίζεται ποτέ». It needs «ΔΙΑΓΡΑΦΗ» typed plus a Yes. Before deleting, the whole
+  catalogue (listing + every product detail) is saved to `backupsP2O_<store>_<time>_before_reset.json`
+  and EFIC to its usual CSV. Order: option choices → option groups → products → categories;
+  the store is re-read afterwards and what is left is reported. Store **1046** is refused
+  outright. EFIC side (`EficRepository.DeleteAllUnderCodesAsync`): own code must resolve, no
+  code may be empty or another platform's, rows deleted must equal rows counted in the same
+  transaction. Tested: STOA copy — Wolt/efood codes refused, only the 2 test rows removed, other
+  rows byte-for-byte unchanged; demo 1110 — a throwaway category, 2 products and a size group
+  deleted cleanly, the real products untouched; read-only plan of the real store correct.
 - **Order-feed check: orders arriving under another code than «Σύνδεση P2O» are a stop.** Seen
   21/09 on Stavros: the connector sends store 1110 as `PO4897`, EFST said `PO1110` and the app
   wrote its EFIC links under `1` — the first real order arrived with no product on any line.

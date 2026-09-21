@@ -163,6 +163,14 @@
                           Content="Αποστολή υπολοίπων (SCRB) στο PointToOrder κάθε 5 λεπτά"
                           ToolTip="Τα υπόλοιπα του ταμείου (πίνακας SCRB) στέλνονται ως stock στο PointToOrder όσο το πρόγραμμα είναι ανοιχτό. Προϊόντα χωρίς μετρητή δεν αγγίζονται."/>
 
+                <TextBlock Text="Επαναφορά" Style="{StaticResource SectionHeader}"/>
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Επαναφορά από την αρχή..." Padding="12,4" Foreground="#A63A22"
+                            Click="ResetButton_Click"/>
+                </StackPanel>
+                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5B6572" FontSize="12"
+                           Text="Διαγράφει όλα τα προϊόντα και τις κατηγορίες του καταστήματος PointToOrder και τις αντιστοιχίσεις PointToOrder του EFIC (ποτέ Wolt / efood), για να σταλούν όλα ξανά. Δείχνει πρώτα τι θα διαγραφεί και ζητά επιβεβαίωση."/>
+
                 <TextBlock Text="Οθόνες τεχνικού" Style="{StaticResource SectionHeader}"/>
                 <TextBlock TextWrapping="Wrap" Margin="0,0,0,8" Foreground="#5B6572" FontSize="12"
                            Text="Ο απλός χρήστης βλέπει μόνο την «Αρχική» (κουμπί Συγχρονισμός). Οι παρακάτω οθόνες εμφανίζονται στο πλάι μόνο αν ενεργοποιηθούν εδώ."/>

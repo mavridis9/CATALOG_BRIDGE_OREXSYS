@@ -161,3 +161,8 @@ git-ignored and excluded from publish. The sidebar shows the version.
   plus «καμία» and a flagged test code if one is saved. The path where a database *has* a P2O
   line is untested live — no available DB has one (LIGHTHOUSE2 copy is gone; EFST must never
   be written by this tool).
+- **Reset (1.1.1, 21/09).** Ρυθμίσεις → «Επαναφορά από την αρχή» (`ResetWindow`, `ResetService`,
+  `EficRepository.DeleteAllUnderCodesAsync`) deletes the WHOLE PointToOrder store (products,
+  option groups, categories) and the P2O rows of EFIC, after a JSON backup of the catalogue and the
+  usual EFIC CSV. Store 1046 is hard-refused in `ResetService.ProtectedStores`; Wolt/efood codes can
+  never be selected or reached. Owner-requested so a demo can start clean.

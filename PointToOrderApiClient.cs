@@ -376,6 +376,50 @@ namespace CatalogBridge
             return ids;
         }
 
+        // The option groups nested in one offer (CHILD categories in the offer's `categories[]`,
+        // each with its choice offers) - they do not appear in the catalog listing, so a full
+        // reset has to ask per offer. Also returns the raw JSON, for the reset's backup file.
+        public async Task<(List<(long CategoryId, List<long> OfferIds)> Groups, string Json)> GetOptionGroupsAsync(
+            long catalogId, long offerId)
+        {
+            var response = await SendAuthorizedAsync(() => http.GetAsync(
+                $"{baseUrl}/api/v2/user/stores/{storeId}/catalog/{catalogId}/offer/{offerId}"));
+
+            string body = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+                throw new PointToOrderException(
+                    $"Δεν ήταν δυνατή η ανάγνωση του προϊόντος {offerId} ({(int)response.StatusCode}): {body}");
+
+            var groups = new List<(long, List<long>)>();
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("categories", out var categories) &&
+                categories.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var category in categories.EnumerateArray())
+                {
+                    var offers = new List<long>();
+                    if (category.TryGetProperty("offers", out var list) && list.ValueKind == JsonValueKind.Array)
+                        foreach (var offer in list.EnumerateArray())
+                        {
+                            long id = ReadId(offer, "offerId");
+                            if (id != 0) offers.Add(id);
+                        }
+                    long categoryId = ReadId(category, "categoryId", "id");
+                    if (categoryId != 0) groups.Add((categoryId, offers));
+                }
+            }
+            return (groups, body);
+        }
+
+        public async Task<string> GetCatalogJsonAsync()
+        {
+            var response = await SendAuthorizedAsync(
+                () => http.GetAsync($"{baseUrl}/api/v1/user/stores/{storeId}/catalog"));
+            return await response.Content.ReadAsStringAsync();
+        }
+
+        public string StoreId => storeId;
+
         // Permanently removes products from the platform. There is no undo on PointToOrder's
         // side - a deleted product can only come back by being recreated.
         public async Task DeleteOffersAsync(long catalogId, IReadOnlyList<long> offerIds)
