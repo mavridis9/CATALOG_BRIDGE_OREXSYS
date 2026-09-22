@@ -187,3 +187,9 @@ git-ignored and excluded from publish. The sidebar shows the version.
   created by the shop. Still open: showing TILL orders in the customer's P2O history —
   `external-order` is loyalty-only/invisible, admin `POST /api/v2/user/stores/{id}/orders`
   answers 500 in every shape tried; next idea = capture what the admin «Order Capture» screen sends.
+- **Till orders → P2O history (22/09).** `TillOrderSender`: draft (public API) → items → customer +
+  `externalOrderId OREXSYS-<ORDMID>` + comment «[OREXSYS#<ORDMID>]» → admin v2 PUT status. Only if
+  IDENTICAL (EFIC-mapped products, same price, integer qty) else refused. `EfomTriggerGuard` gained the
+  loop guard (`OREXSYS-LOOP-GUARD-V1`, edits D1/D2: tagged order → STATUS -1 on insert and on accept)
+  because the first live send came back as till order #6 + a nameless customer. `ReadState.Patched`
+  now requires e-mail-only AND loop guard; older = `PatchedOlder`, completed at next Run.

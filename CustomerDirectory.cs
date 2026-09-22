@@ -271,7 +271,12 @@ namespace CatalogBridge
 
         // ---- the customer's orders (double-click) --------------------------------------------
 
-        public sealed record CustomerOrder(long OrdmId, DateTime When, string Kind, string Status, decimal Total, string Items);
+        public sealed record CustomerOrder(long OrdmId, DateTime When, string Kind, string Status, decimal Total, string Items, bool FromPlatform)
+        {
+            // Filled by the orders window from PointToOrder: «από P2O» for an order that arrived
+            // from the platform, the token of the copy for a till order already sent, else blank.
+            public string PlatformText { get; set; } = "";
+        }
 
         public sealed class CustomerOrders
         {
@@ -296,6 +301,7 @@ namespace CatalogBridge
             connection.Open();
             const string sql = @"
                 SELECT m.ORDMID, m.ODATE, m.OTIME, m.OTYPE, m.STS, m.CANCELED, m.TOTAL,
+                       (SELECT COUNT(*) FROM EFOM e WHERE e.ORDMID = m.ORDMID) AS FROMP2O,
                        (SELECT LIST(TRIM(d.NAME) || IIF(d.QTY <> 1, ' ×' || CAST(d.QTY AS INTEGER), ''), ', ')
                           FROM ORDD d WHERE d.ORDMID = m.ORDMID AND d.ORDDID = d.PARENTID AND d.QTY > 0) AS ITEMS
                 FROM ORDM m
@@ -318,7 +324,7 @@ namespace CatalogBridge
                     Convert.ToInt64(reader["ORDMID"]), date + time,
                     otype switch { 2 => "Online / delivery", 3 => "Take away", 1 => "Τραπέζι", _ => $"Τύπος {otype}" },
                     sts == 4 ? "Κλειστή" : "Ανοιχτή",
-                    total, Str(reader["ITEMS"])));
+                    total, Str(reader["ITEMS"]), Convert.ToInt32(reader["FROMP2O"]) > 0));
             }
             return result;
         });

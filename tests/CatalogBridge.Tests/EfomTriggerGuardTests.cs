@@ -121,6 +121,45 @@ namespace CatalogBridge.Tests
             Assert.AreEqual(Squash(Vendor), Squash(restored));
         }
 
+        // Owner decision 22/09: a till order sent to PointToOrder comes back through the
+        // connector; the «[OREXSYS#» tag in its comment makes the trigger reject it (STATUS -1)
+        // on insert and whenever the connector tries to accept it.
+        [TestMethod]
+        public void LoopGuard_IsPartOfTheFullPatch()
+        {
+            EfomTriggerGuard.TryTransform(Vendor, 50, out string patched, out _);
+            string s = Squash(patched);
+
+            StringAssert.Contains(patched, EfomTriggerGuard.MarkerLoopGuard);
+            StringAssert.Contains(s, "if (inserting) then begin /* OREXSYS-LOOP-GUARD-V1");
+            StringAssert.Contains(s, "if (position('[OREXSYS#', cast(new.json as varchar(8000))) > 0) then new.status = -1;");
+            StringAssert.Contains(s, "if ((new.status = 2) and (position('[OREXSYS#', cast(new.json as varchar(8000))) > 0)) then new.status = -1; " +
+                                     "if (old.status != new.status) then execute procedure sendmessage('RefreshEFood');");
+        }
+
+        // A database already on e-mail-only (21/09) gets only the loop guard, in place.
+        [TestMethod]
+        public void LoopGuard_IsAddedToAnEmailOnlyTrigger()
+        {
+            EfomTriggerGuard.TryTransform(Vendor, 50, out string full, out _);
+            // simulate the 21/09 state: full patch without the guard
+            Assert.IsTrue(EfomTriggerGuard.TryRevert(full, 50, out string vendorAgain, out _));
+            EfomTriggerGuard.TryTransform(vendorAgain, 50, out string again, out _);
+            Assert.AreEqual(Squash(full), Squash(again));
+
+            Assert.IsFalse(EfomTriggerGuard.TryAddLoopGuard(full, out _, out string problem), "not twice: " + problem);
+        }
+
+        [TestMethod]
+        public void RemoveTakesTheLoopGuardOutToo()
+        {
+            EfomTriggerGuard.TryTransform(Vendor, 50, out string patched, out _);
+
+            Assert.IsTrue(EfomTriggerGuard.TryRevert(patched, 50, out string restored, out string problem), problem);
+            Assert.IsFalse(restored.Contains(EfomTriggerGuard.MarkerLoopGuard));
+            Assert.AreEqual(Squash(Vendor), Squash(restored));
+        }
+
         [TestMethod]
         public void TheSettingIsSavedAndLoaded()
         {

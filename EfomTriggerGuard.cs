@@ -212,6 +212,83 @@ declare variable f_pos integer;";
                into :f_custid;
           end";
 
+        // ---- loop guard (CatalogBridge, owner decision 22/09/2026) --------------------------
+        //
+        // Till orders sent to PointToOrder (so the customer's history matches) come straight
+        // back through the connector like any other online order: seen live on 1110/Stavros -
+        // a duplicate till order #6 and, because admin-created orders carry no e-mail, a new
+        // nameless customer. Every order the app sends carries «[OREXSYS#<ORDMID>]» in its
+        // comment, which the connector copies into orderGeneralNotes inside EFOM.JSON. These two
+        // edits mark such an order rejected (STATUS -1, the connector's own cancel value) both
+        // when it is inserted and whenever the connector tries to accept it, so it never
+        // becomes a till order and never touches CUST.
+        public const string MarkerLoopGuard = "OREXSYS-LOOP-GUARD-V1";
+        public const string SentOrderTag = "[OREXSYS#";
+
+        private const string AnchorInsertBlock = @"
+  if (inserting) then
+    begin
+      if (new.apptype is null) then";
+
+        private const string ReplInsertBlock = @"
+  if (inserting) then
+    begin
+      /* " + MarkerLoopGuard + @": an order this shop sent to the platform itself must not come back as a till order */
+      if (position('" + SentOrderTag + @"', cast(new.json as varchar(8000))) > 0) then
+        new.status = -1;
+      if (new.apptype is null) then";
+
+        private const string AnchorUpdateBlock = @"
+  if (updating) then
+    begin
+      if (old.status != new.status) then
+        execute procedure sendmessage('RefreshEFood');";
+
+        private const string ReplUpdateBlock = @"
+  if (updating) then
+    begin
+      /* " + MarkerLoopGuard + @" */
+      if ((new.status = 2) and (position('" + SentOrderTag + @"', cast(new.json as varchar(8000))) > 0)) then
+        new.status = -1;
+      if (old.status != new.status) then
+        execute procedure sendmessage('RefreshEFood');";
+
+        public static bool TryAddLoopGuard(string source, out string patched, out string problem)
+        {
+            problem = "";
+            patched = "";
+            if (!TryReplaceExactlyOnce(source, AnchorInsertBlock, ReplInsertBlock, out string step, out int c1))
+            {
+                problem = c1 == 0 ? "το σημείο D1 (inserting) δεν βρέθηκε" : $"το σημείο D1 (inserting) βρέθηκε {c1} φορές";
+                return false;
+            }
+            if (!TryReplaceExactlyOnce(step, AnchorUpdateBlock, ReplUpdateBlock, out patched, out int c2))
+            {
+                patched = "";
+                problem = c2 == 0 ? "το σημείο D2 (updating) δεν βρέθηκε" : $"το σημείο D2 (updating) βρέθηκε {c2} φορές";
+                return false;
+            }
+            return true;
+        }
+
+        private static bool TryRemoveLoopGuard(string source, out string restored, out string problem)
+        {
+            problem = "";
+            restored = "";
+            if (!TryReplaceExactlyOnce(source, ReplUpdateBlock, AnchorUpdateBlock, out string step, out int c2))
+            {
+                problem = "το σημείο D2 (updating) δεν βρέθηκε όπως το αφήνει η προστασία επιστροφής";
+                return false;
+            }
+            if (!TryReplaceExactlyOnce(step, ReplInsertBlock, AnchorInsertBlock, out restored, out int c1))
+            {
+                restored = "";
+                problem = "το σημείο D1 (inserting) δεν βρέθηκε όπως το αφήνει η προστασία επιστροφής";
+                return false;
+            }
+            return true;
+        }
+
         // V1 (e-mail, then phone) → e-mail only: the one block swapped, exactly once.
         public static bool TryUpgradeToEmailOnly(string source, int emailColumnLength,
             out string upgraded, out string problem)
@@ -283,23 +360,29 @@ declare variable f_pos integer;";
                         Message = $"Το trigger {TriggerName} δεν βρέθηκε στη βάση.",
                     };
 
-                if (source.Contains(MarkerEmailOnly, StringComparison.Ordinal))
+                bool hasEmailOnly = source.Contains(MarkerEmailOnly, StringComparison.Ordinal);
+                bool hasLoopGuard = source.Contains(MarkerLoopGuard, StringComparison.Ordinal);
+                if (hasEmailOnly && hasLoopGuard)
                     return new Result
                     {
                         Outcome = Outcome.AlreadyPatched,
-                        Message = "e-mail correlation active (e-mail only)",
+                        Message = "e-mail correlation active (e-mail only, loop guard)",
                     };
 
                 // Back up before touching anything - never patch without the original on disk.
                 string backupPath = WriteBackup(source, backupDirectory);
 
                 // A trigger already carrying the e-mail-then-phone patch (V1, e.g. from
-                // ΔΙΑΧΕΙΡΙΣΗ) is upgraded in place; a vendor trigger gets all five edits.
+                // ΔΙΑΧΕΙΡΙΣΗ) is upgraded in place; a vendor trigger gets every edit; one
+                // carrying e-mail-only but no loop guard gets just the loop guard.
                 bool upgrading = source.Contains(Marker, StringComparison.Ordinal);
                 string patched, problem;
-                bool ok = upgrading
-                    ? TryUpgradeToEmailOnly(source, emailLength, out patched, out problem)
-                    : TryTransform(source, emailLength, out patched, out problem);
+                bool ok = hasEmailOnly
+                    ? TryAddLoopGuard(source, out patched, out problem)
+                    : upgrading
+                        ? TryUpgradeToEmailOnly(source, emailLength, out patched, out problem) &&
+                          TryAddLoopGuard(patched, out patched, out problem)
+                        : TryTransform(source, emailLength, out patched, out problem);
                 if (!ok)
                     return new Result
                     {
@@ -336,7 +419,8 @@ declare variable f_pos integer;";
                     after = ReadTriggerSource(verifyConnection);
                 }
                 if (after == null || !after.Contains(Marker, StringComparison.Ordinal) ||
-                    !after.Contains(MarkerEmailOnly, StringComparison.Ordinal))
+                    !after.Contains(MarkerEmailOnly, StringComparison.Ordinal) ||
+                    !after.Contains(MarkerLoopGuard, StringComparison.Ordinal))
                     return new Result
                     {
                         Outcome = Outcome.Failed,
@@ -356,7 +440,7 @@ declare variable f_pos integer;";
                 {
                     Outcome = Outcome.Patched,
                     BackupPath = backupPath,
-                    Message = upgrading ? "upgraded to e-mail only" : "patched successfully (e-mail only)",
+                    Message = hasEmailOnly ? "loop guard added" : upgrading ? "upgraded to e-mail only + loop guard" : "patched successfully (e-mail only, loop guard)",
                 };
             }
             catch (Exception ex)
@@ -372,7 +456,9 @@ declare variable f_pos integer;";
         // ---- CatalogBridge additions -----------------------------------------------------
 
         // PatchedWithPhone = the V1 patch (e-mail, then phone) - upgraded by the next Run.
-        public enum State { Patched, PatchedWithPhone, NotPatched, Missing }
+        // PatchedOlder = an earlier version of our patch (e-mail-then-phone, or e-mail-only without
+        // the loop guard) - completed by the next Run.
+        public enum State { Patched, PatchedOlder, NotPatched, Missing }
 
         // Read-only: is the patch in the live trigger right now? For the line in Ρυθμίσεις.
         public static State ReadState(Settings settings)
@@ -381,8 +467,8 @@ declare variable f_pos integer;";
             connection.Open();
             string? source = ReadTriggerSource(connection);
             return source == null ? State.Missing
-                 : source.Contains(MarkerEmailOnly, StringComparison.Ordinal) ? State.Patched
-                 : source.Contains(Marker, StringComparison.Ordinal) ? State.PatchedWithPhone
+                 : source.Contains(MarkerEmailOnly, StringComparison.Ordinal) && source.Contains(MarkerLoopGuard, StringComparison.Ordinal) ? State.Patched
+                 : source.Contains(Marker, StringComparison.Ordinal) ? State.PatchedOlder
                  : State.NotPatched;
         }
 
@@ -478,6 +564,9 @@ declare variable f_pos integer;";
             };
 
             string working = source;
+            if (working.Contains(MarkerLoopGuard, StringComparison.Ordinal) &&
+                !TryRemoveLoopGuard(working, out working, out problem))
+                return false;
             foreach (var edit in edits)
             {
                 if (!TryReplaceExactlyOnce(working, edit.Patched, edit.Original, out working, out int count))
@@ -591,6 +680,7 @@ declare variable f_pos integer;";
                 }
             }
 
+            if (!TryAddLoopGuard(working, out working, out problem)) return false;
             patched = working;
             return true;
         }

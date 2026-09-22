@@ -41,13 +41,15 @@
         </UniformGrid>
 
         <Border Grid.Row="2" Style="{StaticResource Card}" Padding="8">
-            <DataGrid x:Name="OrdersGrid" Style="{StaticResource ModernGrid}" SelectionMode="Single">
+            <DataGrid x:Name="OrdersGrid" Style="{StaticResource ModernGrid}" SelectionMode="Single"
+                      SelectionChanged="OrdersGrid_SelectionChanged">
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="Ημερομηνία" Binding="{Binding When, StringFormat=dd/MM/yyyy HH:mm}" Width="135"/>
                     <DataGridTextColumn Header="Αρ." Binding="{Binding OrdmId}" Width="70"/>
                     <DataGridTextColumn Header="Είδος" Binding="{Binding Kind}" Width="120"/>
                     <DataGridTextColumn Header="Κατάσταση" Binding="{Binding Status}" Width="85"/>
                     <DataGridTextColumn Header="Προϊόντα" Binding="{Binding Items}" Width="*"/>
+                    <DataGridTextColumn Header="PointToOrder" Binding="{Binding PlatformText}" Width="110"/>
                     <DataGridTextColumn Header="Ποσό" Binding="{Binding Total, StringFormat=0.00}" Width="80">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
@@ -59,9 +61,14 @@
 
         <Grid Grid.Row="3" Margin="0,12,0,0">
             <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="12.5" TextWrapping="Wrap"
-                       Margin="0,0,120,0" Foreground="{StaticResource MutedBrush}"/>
-            <Button Content="Κλείσιμο" Style="{StaticResource SecondaryButton}" MinWidth="100"
-                    HorizontalAlignment="Right" IsCancel="True" Click="CloseButton_Click"/>
+                       Margin="0,0,330,0" Foreground="{StaticResource MutedBrush}"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="SendButton" Content="Αποστολή στο PointToOrder..." Style="{StaticResource PrimaryButton}"
+                        MinWidth="200" Margin="0,0,10,0" IsEnabled="False" Click="SendButton_Click"
+                        ToolTip="Στέλνει την επιλεγμένη παραγγελία του ταμείου στο PointToOrder, στο ιστορικό του πελάτη — μόνο αν μπορεί να είναι ολόιδια (ίδια προϊόντα, ίδιες τιμές)."/>
+                <Button Content="Κλείσιμο" Style="{StaticResource SecondaryButton}" MinWidth="100"
+                        IsCancel="True" Click="CloseButton_Click"/>
+            </StackPanel>
         </Grid>
     </Grid>
 </Window>

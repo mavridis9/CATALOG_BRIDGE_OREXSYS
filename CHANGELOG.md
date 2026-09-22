@@ -34,6 +34,30 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **Till orders into the customer's PointToOrder history («Αποστολή στο PointToOrder» in the
+  customer's orders window).** Owner goal 21-22/09: the same orders on both sides. The admin
+  «create order» API answers 500, but the admin's own «Order Capture» page (watched live in the
+  owner's Chrome) uses the customer-app calls: draft `POST /api/v1/stores/{id}/orders` →
+  `PUT …/orderItems` per product → `PUT …/orders/{uuid}` with `customerUserId`,
+  `externalOrderId = OREXSYS-<ORDMID>` and a comment → admin
+  `PUT /api/v2/user/stores/{id}/orders/{uuid}` status SUBMITTED + PAID_OFFLINE (auto-accept
+  closes it). Verified live for Stratos on 1110: the order appeared in his history. Rule
+  (owner): **sent only if identical** — every line maps through EFIC (this store, that size)
+  to a PointToOrder product whose price equals the till price, integer quantities; otherwise
+  refused with the reason and nothing is sent (`TillOrderSender.CheckIdentical`). The
+  window's «PointToOrder» column shows «από P2O» for orders that came from the platform and
+  the token of the copy for till orders already sent; those cannot be sent again.
+- **Loop guard in `EFOM_BIUD_TRG` (`OREXSYS-LOOP-GUARD-V1`).** The first live send came
+  straight back through the connector as a duplicate till order #6, and — admin-created
+  orders carry no e-mail — as a new nameless customer. Every order the app sends carries
+  «[OREXSYS#<ORDMID>]» in its comment (→ `orderGeneralNotes` in `EFOM.JSON`); two more
+  anchored edits in the trigger mark such an order STATUS -1 on insert and again whenever the
+  connector tries to accept it, so it never becomes a till order and never touches `CUST`.
+  Part of the same patch as the e-mail correlation (added in place to a database already on
+  e-mail-only; removed together). «Αποστολή» refuses when the guard is not active. Proven on
+  a copy of STAVROS.FDB (8/8: ordinary order still accepted, tagged order stays -1 with no
+  ORDMID, no customer created, removal restores the vendor trigger); applied to the real
+  STAVROS.FDB at app start 22/09 10:31 (backup in `publish\backups`).
 - **«Πελάτες» → double-click: the customer's orders.** Every real order of the customer in
   Orexsys — online and at the till (customer link = CARDCUSTID when set, else CUSTID, as every
   Orexsys reader does; cancelled = CANCELED or TOTAL 0, counted apart and left out of the
