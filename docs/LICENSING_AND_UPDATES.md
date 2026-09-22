@@ -82,7 +82,7 @@ no crypto package; same security class, same key handling. The payload:
   "modules": ["catalogue", "orders"],
   "store": 1046,                        // optional; null = any store
   "issued": "2026-09-22T10:00:00Z",
-  "valid_until": "2026-10-22T10:00:00Z",   // token validity = last heartbeat + 30 days
+  "valid_until": "2026-10-22T10:00:00Z",   // min(last heartbeat + 30 days, licence_until)
   "licence_until": "2027-09-22T00:00:00Z", // the commercial end date, shown to the shop
   "grace_days": 14
 }
@@ -98,9 +98,13 @@ no crypto package; same security class, same key handling. The payload:
 
 `valid_until` slides forward with every successful heartbeat (§5), so an installation that
 talks to the server once a month never sees step 3. An installation that is cut off gets
-30 + 14 days before anything stops. `licence_until` is what the *commercial* licence says;
-when it passes, the server stops sliding `valid_until` and the same countdown begins —
-the shop sees the date coming in Ρυθμίσεις for a year, not as a surprise.
+30 + 14 days before anything stops. `licence_until` is what the *commercial* licence says,
+and `valid_until` is **capped at it** (owner's decision, 22/09/2026, built in the phase-2
+server): every token is issued with `min(now + 30 days, licence_until)`, so when the
+commercial date passes the 14-day grace starts on that date itself, never later. After it the
+server re-issues the same `valid_until` unchanged (heartbeats still answer, state `lapsed`),
+a fresh activation is refused, and extending the licence on the server restores everything at
+the next heartbeat — the shop sees the date coming in Ρυθμίσεις for a year, not as a surprise.
 
 ### 4.1 Enforcement
 
