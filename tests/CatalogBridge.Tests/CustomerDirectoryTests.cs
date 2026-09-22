@@ -92,6 +92,25 @@ namespace CatalogBridge.Tests
             Assert.AreEqual(CustomerLink.DuplicateEmail, rows[0].Link);
         }
 
+        // «Κάρτα...» on a PointToOrder-only account: the Orexsys customer it creates carries
+        // the account's name and e-mail; the stand-in phone (69 + CUSTID) is not a real number
+        // and is left out, a real mobile is kept.
+        [TestMethod]
+        public void FromPlatformKeepsOnlyARealMobile()
+        {
+            var standIn = new PlatformCustomer(1003, "Stavros Mavridis", "s@orexsys.gr", "6900001003", "", true);
+            var real = standIn with { Phone = "+306971234567" };
+
+            var a = CustomerDirectory.FromPlatform(standIn, "10045");
+            var b = CustomerDirectory.FromPlatform(real, "10045");
+
+            Assert.AreEqual(("Stavros Mavridis", "10045", "s@orexsys.gr"), (a.Name, a.Card, a.Email));
+            Assert.AreEqual("6900001003", a.Mobile, "a 69-number that parses as a mobile is kept as is");
+            Assert.AreEqual("6971234567", b.Mobile);
+            Assert.IsNull(CustomerDirectory.ValidateCard(" 10045 "));
+            Assert.IsNotNull(CustomerDirectory.ValidateCard(""));
+        }
+
         [TestMethod]
         public void ACardThatDiffersBetweenTheTwoSystemsIsShown()
         {

@@ -100,6 +100,7 @@ namespace CatalogBridge
             var row = Selected;
             SendButton.IsEnabled = row is { Link: CustomerLink.OrexsysOnly };
             InviteButton.IsEnabled = row?.Platform is { Registered: false };
+            CardButton.IsEnabled = CanGetCard(row);
         }
 
         // ---- new customer ------------------------------------------------------------------
@@ -201,6 +202,67 @@ namespace CatalogBridge
 
         // ---- invitation: a real e-mail, never automatic ---------------------------------------
 
+        // ---- «Κάρτα...» --------------------------------------------------------------------
+
+        private static bool CanGetCard(CustomerRow? row) =>
+            row != null && (row.Orexsys == null ? row.Platform != null : row.Orexsys.Card.Trim().Length == 0);
+
+        private async void CardButton_Click(object sender, RoutedEventArgs e)
+        {
+            var row = Selected;
+            if (!CanGetCard(row)) return;
+            var settings = TryLoadSettings(m => ShowStatus(m, Warn));
+            if (settings == null) return;
+
+            var dialog = new CardWindow(row!.Name, row.Orexsys == null) { Owner = Window.GetWindow(this) };
+            if (dialog.ShowDialog() != true || dialog.Card.Length == 0) return;
+            string card = dialog.Card;
+
+            SetBusy(true);
+            string message;
+            Brush colour = Good;
+            try
+            {
+                if (row.Orexsys != null)
+                {
+                    await CustomerDirectory.SetCardAsync(settings, row.Orexsys.CustId, card);
+                    CustomerDirectory.Log($"Orexsys: card {card} set on CUSTID {row.Orexsys.CustId}");
+                    message = $"✓ Η κάρτα «{card}» καταχωρήθηκε στον «{row.Name}» στο Orexsys.";
+                }
+                else
+                {
+                    // A PointToOrder-only account: the card creates its Orexsys customer, with
+                    // the account's name, e-mail and phone, so its orders match from now on.
+                    var input = CustomerDirectory.FromPlatform(row.Platform!, card);
+                    long custId = await CustomerDirectory.CreateInOrexsysAsync(settings, input);
+                    CustomerDirectory.Log($"Orexsys: created CUSTID {custId} for platform account {row.Platform!.Id} with card {card}");
+                    message = $"✓ Ο «{row.Name}» δημιουργήθηκε στο Orexsys με την κάρτα «{card}» (CUSTID {custId}).";
+                }
+
+                // The platform side, when the account exists and has no card yet.
+                if (row.Platform != null && row.Platform.MemberCode.Length == 0)
+                {
+                    using var api = new PointToOrderApiClient(settings);
+                    string? refused = await api.TrySetMemberCodeAsync(row.Platform.Id, card);
+                    CustomerDirectory.Log($"PointToOrder: memberCode {card} on {row.Platform.Id}: {(refused ?? "ok")}");
+                    if (refused == null)
+                        message += " Καταχωρήθηκε και στο PointToOrder.";
+                    else
+                    {
+                        message += $" Στο PointToOrder δεν καταχωρήθηκε ({refused}). Οι παραγγελίες ταιριάζουν με το e-mail, οπότε δεν πειράζει.";
+                        colour = Warn;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                SetBusy(false);
+                ShowStatus(ex.Message, ex is CustomerDirectory.DuplicateCustomerException ? Warn : Bad);
+                return;
+            }
+            await LoadAsync(message, colour);
+        }
+
         private async void InviteButton_Click(object sender, RoutedEventArgs e)
         {
             var row = Selected;
@@ -237,7 +299,7 @@ namespace CatalogBridge
             LoadButton.IsEnabled = !busy;
             NewButton.IsEnabled = !busy;
             CustomersGrid.IsEnabled = !busy;
-            if (busy) { SendButton.IsEnabled = false; InviteButton.IsEnabled = false; }
+            if (busy) { SendButton.IsEnabled = false; InviteButton.IsEnabled = false; CardButton.IsEnabled = false; }
             Cursor = busy ? System.Windows.Input.Cursors.Wait : null;
         }
 

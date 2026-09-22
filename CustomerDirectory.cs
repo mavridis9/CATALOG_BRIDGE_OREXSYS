@@ -269,6 +269,59 @@ namespace CatalogBridge
 
         public static string InviteKey(string email) => Key(email);
 
+        // ---- «Κάρτα...»: a card for a customer that has none --------------------------------
+
+        public static string? ValidateCard(string card)
+        {
+            string c = (card ?? "").Trim();
+            if (c.Length == 0) return "Συμπληρώστε τον αριθμό κάρτας.";
+            if (c.Length > 50) return "Η κάρτα πρέπει να έχει έως 50 χαρακτήρες.";
+            return null;
+        }
+
+        // What a PointToOrder-only account becomes in Orexsys once it gets a card: its name,
+        // e-mail and phone (only if a real Greek mobile - the stand-in numbers are not phones).
+        public static CustomerInput FromPlatform(PlatformCustomer p, string card) =>
+            new(p.Name, card, p.Email, PointToOrderPhone.NormalizeMobile(p.Phone) ?? "");
+
+        // Fills CUST.CARDNO of one customer that has none. Fenced: the card may not be on
+        // another customer, and exactly one row - the one asked for, still without a card -
+        // must change, or nothing does.
+        public static Task SetCardAsync(Settings settings, long custId, string card) => Task.Run(() =>
+        {
+            string? problem = ValidateCard(card);
+            if (problem != null) throw new InvalidOperationException(problem);
+            string c = card.Trim();
+
+            using var connection = new FbConnection(settings.ToConnectionString());
+            connection.Open();
+            using var transaction = connection.BeginTransaction();
+
+            using (var check = new FbCommand(
+                "SELECT FIRST 1 CUSTID, COALESCE(NULLIF(TRIM(FNAME), ''), LNAME) FROM CUST WHERE CARDNO = @card AND CUSTID <> @id",
+                connection, transaction))
+            {
+                check.Parameters.Add("@card", FbDbType.VarChar, 50).Value = c;
+                check.Parameters.Add("@id", FbDbType.BigInt).Value = custId;
+                using var reader = check.ExecuteReader();
+                if (reader.Read())
+                    throw new DuplicateCustomerException(
+                        $"Η κάρτα «{c}» ανήκει ήδη στον πελάτη «{Str(reader[1])}» (CUSTID {reader[0]}). Δεν άλλαξε τίποτα.");
+            }
+
+            using var update = new FbCommand(
+                "UPDATE CUST SET CARDNO = @card WHERE CUSTID = @id AND TRIM(COALESCE(CARDNO, '')) = ''",
+                connection, transaction);
+            update.Parameters.Add("@card", FbDbType.VarChar, 50).Value = c;
+            update.Parameters.Add("@id", FbDbType.BigInt).Value = custId;
+            if (update.ExecuteNonQuery() != 1)
+            {
+                transaction.Rollback();
+                throw new InvalidOperationException("Ο πελάτης δεν βρέθηκε ή έχει ήδη κάρτα. Δεν άλλαξε τίποτα.");
+            }
+            transaction.Commit();
+        });
+
         private static string Str(object value) => value == DBNull.Value ? "" : (value.ToString() ?? "").Trim();
     }
 

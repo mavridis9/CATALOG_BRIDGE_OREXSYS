@@ -388,6 +388,50 @@ namespace CatalogBridge
             throw new PointToOrderException($"Αποτυχία δημιουργίας πελάτη ({(int)response.StatusCode}): {Explain(body)}");
         }
 
+        // Puts the card (memberCode) on an existing platform account. The update endpoint wants
+        // the whole registration record back, so the current one is read first and only the
+        // card changes. Returns null on success, else why the platform refused - seen live on
+        // 1110: 403 «The user is registered online so only he can change their details» for an
+        // account the customer registered themselves; the card then lives in Orexsys only.
+        public async Task<string?> TrySetMemberCodeAsync(long customerId, string memberCode)
+        {
+            var read = await SendAuthorizedAsync(() => http.GetAsync(
+                $"{baseUrl}/api/v1/stores/{storeId}/customers/{customerId}"));
+            string current = await read.Content.ReadAsStringAsync();
+            if (!read.IsSuccessStatusCode)
+                return $"δεν διαβάστηκε ο λογαριασμός ({(int)read.StatusCode})";
+
+            using var doc = JsonDocument.Parse(current);
+            var r = doc.RootElement;
+            string Text(string key) =>
+                r.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "") : "";
+            long? Nested(string obj) =>
+                r.TryGetProperty(obj, out var o) && o.ValueKind == JsonValueKind.Object && o.TryGetProperty("id", out var i) &&
+                i.ValueKind == JsonValueKind.Number ? i.GetInt64() : null;
+
+            var payload = new Dictionary<string, object>
+            {
+                ["firstName"] = Text("firstName"),
+                ["lastName"] = Text("lastName"),
+                ["email"] = Text("email"),
+                ["phoneNumber"] = Text("phoneNumber"),
+                ["memberCode"] = memberCode,
+            };
+            if (Nested("country") is long country) payload["countryId"] = country;
+            if (Nested("preferredLanguage") is long language) payload["preferredLanguageId"] = language;
+
+            var response = await SendAuthorizedAsync(() => http.PutAsJsonAsync(
+                $"{baseUrl}/api/v1/stores/{storeId}/customers/{customerId}", payload));
+            if (response.IsSuccessStatusCode) return null;
+
+            string body = await response.Content.ReadAsStringAsync();
+            if (response.StatusCode == HttpStatusCode.Forbidden)
+                return "ο πελάτης έκανε μόνος του εγγραφή στο PointToOrder και μόνο εκείνος μπορεί να αλλάξει τα στοιχεία του";
+            if (response.StatusCode == HttpStatusCode.BadRequest && body.Contains("CUSTOMER_VOUCHER_ALREADY_PRESENT"))
+                return "η κάρτα χρησιμοποιείται ήδη από άλλον λογαριασμό στο PointToOrder";
+            return $"{(int)response.StatusCode}: {Explain(body)}";
+        }
+
         // PointToOrder's own «Invite to Register» e-mail. A real e-mail, cannot be recalled.
         public async Task InviteCustomerAsync(long customerId)
         {

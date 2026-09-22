@@ -35,6 +35,9 @@
                 <Button x:Name="SendButton" Content="Αποστολή στο PointToOrder" IsEnabled="False"
                         Style="{StaticResource SecondaryButton}" Margin="14,0,0,0" Click="SendButton_Click"
                         ToolTip="Δημιουργεί στο PointToOrder τον επιλεγμένο πελάτη που υπάρχει μόνο στο Orexsys."/>
+                <Button x:Name="CardButton" Content="Κάρτα..." IsEnabled="False"
+                        Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" Click="CardButton_Click"
+                        ToolTip="Δίνει κάρτα σε πελάτη που δεν έχει. Για λογαριασμό που υπάρχει μόνο στο PointToOrder, δημιουργεί και τον πελάτη στο Orexsys με αυτή την κάρτα."/>
                 <Button x:Name="InviteButton" Content="Αποστολή πρόσκλησης..." IsEnabled="False"
                         Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" Click="InviteButton_Click"
                         ToolTip="Στέλνει στον επιλεγμένο πελάτη το e-mail του PointToOrder για να ορίσει κωδικό και να συνδεθεί. Δεν ανακαλείται."/>

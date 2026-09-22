@@ -34,6 +34,14 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **«Πελάτες» → «Κάρτα...»: a card for a customer that has none.** For an Orexsys customer
+  without a card it fills `CUST.CARDNO` (refused if the card is on another customer or the
+  customer already has one — exactly one row changes or nothing). For an account that exists
+  only on PointToOrder it creates the Orexsys customer with that card and the account's name,
+  e-mail and (real) mobile, so the account's orders match from then on. Then it tries to put
+  the card on the PointToOrder account as `memberCode`; a self-registered account refuses
+  (403 «only he can change their details») and the message says so — orders still match by
+  e-mail, so nothing is lost. Verified on the scratch copy (11/11).
 - **Νέα οθόνη «Πελάτες»: ο πελάτης δημιουργείται μία φορά, και στα δύο συστήματα.** Owner
   decision 21/09/2026: only the shop creates customers. «Νέος πελάτης» takes name, card,
   e-mail and (optional) mobile and creates the customer in Orexsys (`CUST`: name in
