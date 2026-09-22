@@ -76,6 +76,11 @@ namespace CatalogBridge
         // every start. Off: the trigger is left alone (removal is an explicit button).
         public bool EmailOrderCorrelation { get; init; }
 
+        // Till orders sent to PointToOrder automatically (TillOrderSyncService), from the day the
+        // home-page switch was turned on - older orders are left alone.
+        public bool TillOrderSyncEnabled { get; set; }
+        public DateTime TillOrderSyncSince { get; set; } = DateTime.Today;
+
         private HashSet<long>? syncCategories;
 
         public bool IncludesCategory(long itmcId)
@@ -156,6 +161,8 @@ namespace CatalogBridge
                 SyncAllCategories = Get("SyncAllCategories", "true") != "false",
                 SyncCategoryIds = Get("SyncCategoryIds", ""),
                 EmailOrderCorrelation = Get("EmailOrderCorrelation", "false") == "true",
+                TillOrderSyncEnabled = Get("TillOrderSyncEnabled", "false") == "true",
+                TillOrderSyncSince = DateTime.TryParseExact(Get("TillOrderSyncSince", ""), "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var since) ? since : DateTime.Today,
                 SizeMode = Enum.TryParse(Get("SizeMode", "SeparateItems"), true, out SizeMode sm)
                     ? sm : SizeMode.SeparateItems,
                 ShowDashboard = Get("ShowDashboard", "false") == "true",
@@ -211,6 +218,9 @@ namespace CatalogBridge
                 "",
                 "; Αντιστοίχιση παραγγελιών PointToOrder με το e-mail του πελάτη (trigger EFOM_BIUD_TRG).",
                 $"EmailOrderCorrelation={(settings.EmailOrderCorrelation ? "true" : "false")}",
+                "; Αυτόματη αποστολή των παραγγελιών ταμείου στο PointToOrder (κουμπί στην Αρχική), από την ημερομηνία.",
+                $"TillOrderSyncEnabled={(settings.TillOrderSyncEnabled ? "true" : "false")}",
+                $"TillOrderSyncSince={settings.TillOrderSyncSince:yyyy-MM-dd}",
                 "",
                 "; Οθόνες τεχνικού (true = εμφανίζονται στο πλάι).",
                 $"ShowDashboard={(settings.ShowDashboard ? "true" : "false")}",

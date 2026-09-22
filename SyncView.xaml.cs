@@ -31,6 +31,66 @@ namespace CatalogBridge
 
         private async void SyncButton_Click(object sender, RoutedEventArgs e) => await SyncAsync();
 
+        // ---- till orders → PointToOrder, automatic ------------------------------------------
+
+        // Wired by MainWindow, which owns the service so it keeps running on every screen.
+        public TillOrderSyncService? TillSync { get; set; }
+
+        public void ShowTillSyncState(Settings settings)
+        {
+            bool on = settings.TillOrderSyncEnabled;
+            TillSyncButton.Content = on ? "Απενεργοποίηση" : "Ενεργοποίηση";
+            TillSyncStateText.Text = on
+                ? $"Ενεργό από {settings.TillOrderSyncSince:dd/MM/yyyy}: κάθε κλειστή παραγγελία του ταμείου για πελάτη με " +
+                  "λογαριασμό PointToOrder στέλνεται μόνη της στο ιστορικό του (μόνο αν είναι ολόιδια — ίδια προϊόντα, ίδιες τιμές)."
+                : "Ανενεργό. Με την ενεργοποίηση, οι παραγγελίες του ταμείου από σήμερα και μετά στέλνονται μόνες τους στο " +
+                  "PointToOrder, στο ιστορικό του πελάτη.";
+        }
+
+        public void ShowTillSyncStatus(string message) => TillSyncStatusText.Text = message;
+
+        private void TillSyncButton_Click(object sender, RoutedEventArgs e)
+        {
+            Settings settings;
+            try { settings = Settings.Load(); }
+            catch (Exception ex) { ShowStatus("Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message, Bad); return; }
+
+            if (!settings.TillOrderSyncEnabled)
+            {
+                if (!settings.IsDatabaseConfigured || !settings.IsApiConfigured)
+                {
+                    ShowStatus("Το πρόγραμμα δεν έχει ρυθμιστεί ακόμα — ανοίξτε τις Ρυθμίσεις (κάτω αριστερά).", Warn);
+                    return;
+                }
+                if (!settings.EmailOrderCorrelation)
+                {
+                    ShowStatus("Πρώτα ενεργοποιήστε στις Ρυθμίσεις την «Αντιστοίχιση παραγγελιών με e-mail» — χωρίς αυτήν οι " +
+                               "παραγγελίες που στέλνονται θα ξαναγύριζαν στο ταμείο.", Warn);
+                    return;
+                }
+                var sure = MessageBox.Show(
+                    "Να στέλνονται αυτόματα οι παραγγελίες του ταμείου στο PointToOrder;\n\n" +
+                    $"Από σήμερα ({DateTime.Today:dd/MM/yyyy}) και μετά, κάθε κλειστή παραγγελία πελάτη που έχει λογαριασμό " +
+                    "PointToOrder θα εμφανίζεται και στο ιστορικό του εκεί, ως πληρωμένη στο κατάστημα. Παλιότερες παραγγελίες " +
+                    "δεν στέλνονται. Παραγγελία με προϊόν που δεν υπάρχει online, ή με άλλη τιμή, δεν στέλνεται και καταγράφεται.",
+                    "Παραγγελίες ταμείου → PointToOrder", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+                if (sure != MessageBoxResult.Yes) return;
+
+                settings.TillOrderSyncEnabled = true;
+                settings.TillOrderSyncSince = DateTime.Today;
+            }
+            else
+            {
+                settings.TillOrderSyncEnabled = false;
+            }
+
+            try { Settings.Save(settings); }
+            catch (Exception ex) { ShowStatus("Η αποθήκευση απέτυχε: " + ex.Message, Bad); return; }
+
+            ShowTillSyncState(settings);
+            TillSync?.Apply(settings);
+        }
+
         private async Task SyncAsync()
         {
             Settings settings;

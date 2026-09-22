@@ -34,6 +34,17 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **Automatic: «Παραγγελίες ταμείου → PointToOrder» switch on the home page.** Owner request
+  22/09. `TillOrderSyncService` runs every 2 minutes while the app is open: every closed
+  (STS 4), not cancelled till order — not one that came from the platform — placed since the
+  day the switch was turned on, for a customer whose e-mail has a PointToOrder account, is sent
+  with `TillOrderSender` under the same identical-only rule; refused orders are logged once per
+  session with the reason (`backups\customers.log`); sent ones are remembered in
+  `sent_till_orders.txt` and checked against the platform's `externalOrderId`, so nothing is
+  sent twice. Turning it on asks for confirmation and records the date
+  (`TillOrderSyncEnabled` / `TillOrderSyncSince`; kept as they are when Ρυθμίσεις is saved).
+  It refuses to run while the loop guard is not in the trigger, and cannot be switched on
+  while «Αντιστοίχιση παραγγελιών με e-mail» is off.
 - **Till orders into the customer's PointToOrder history («Αποστολή στο PointToOrder» in the
   customer's orders window).** Owner goal 21-22/09: the same orders on both sides. The admin
   «create order» API answers 500, but the admin's own «Order Capture» page (watched live in the

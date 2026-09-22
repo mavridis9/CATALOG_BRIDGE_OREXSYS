@@ -16,6 +16,7 @@ namespace CatalogBridge
         private readonly EficView efic = new();
         private readonly CustomersView customers = new();
         private readonly StockSyncService stockSync = new();
+        private readonly TillOrderSyncService tillSync = new();
 
         public MainWindow()
         {
@@ -35,6 +36,9 @@ namespace CatalogBridge
                 StockSyncText.Visibility = message.Length > 0
                     ? Visibility.Visible : Visibility.Collapsed;
             });
+
+            sync.TillSync = tillSync;
+            tillSync.StatusChanged += message => Dispatcher.Invoke(() => sync.ShowTillSyncStatus(message));
 
             ApplySettings();
         }
@@ -111,6 +115,8 @@ namespace CatalogBridge
                 : "Δεν έχει ρυθμιστεί ακόμα";
 
             stockSync.Apply(settings);
+            tillSync.Apply(settings);
+            sync.ShowTillSyncState(settings);
             EnsureEmailCorrelation(settings);
         }
 

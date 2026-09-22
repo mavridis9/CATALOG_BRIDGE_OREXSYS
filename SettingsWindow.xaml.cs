@@ -44,6 +44,7 @@ namespace CatalogBridge
         private void LoadIntoForm()
         {
             var settings = Settings.Load();
+            loaded = settings;
 
             ServerBox.Text = settings.Server;
             PortBox.Text = settings.Port;
@@ -141,6 +142,8 @@ namespace CatalogBridge
             EficStoreCode = (EficConnectionCombo.SelectedItem as EficConnectionOption)?.Code ?? "",
             StockSyncEnabled = StockSyncCheck.IsChecked == true,
             EmailOrderCorrelation = EmailCorrelationCheck.IsChecked == true,
+            TillOrderSyncEnabled = loaded.TillOrderSyncEnabled,      // the home-page switch, kept as it is
+            TillOrderSyncSince = loaded.TillOrderSyncSince,
             SizeMode = (SizeModeCombo.SelectedItem as SizeModeOption)?.Value ?? SizeMode.SeparateItems,
             SyncAllCategories = syncAllCategories,
             SyncCategoryIds = string.Join(",", syncCategoryIds.OrderBy(id => id)),
@@ -152,6 +155,7 @@ namespace CatalogBridge
         };
 
         private string savedEficCode = "";
+        private Settings loaded = new();
 
         // Uses what is on the form (store, database, «Σύνδεση P2O») - the dialog names the
         // store and every EFIC code before anything is deleted.

@@ -27,6 +27,25 @@
                        HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
                        Margin="0,16,0,0" Text=""/>
 
+            <!-- Till orders → PointToOrder, automatic (owner request 22/09/2026) -->
+            <Border Style="{StaticResource Card}" Margin="0,22,0,0" MinWidth="520" Padding="16">
+                <StackPanel>
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="Παραγγελίες ταμείου → PointToOrder" FontSize="15" FontWeight="SemiBold"
+                                       Foreground="{StaticResource InkBrush}"/>
+                            <TextBlock x:Name="TillSyncStateText" Text="Ανενεργό" FontSize="12.5" Margin="0,2,0,0"
+                                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" MaxWidth="330"/>
+                        </StackPanel>
+                        <Button x:Name="TillSyncButton" Content="Ενεργοποίηση" Style="{StaticResource SecondaryButton}"
+                                HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="150"
+                                Click="TillSyncButton_Click"/>
+                    </Grid>
+                    <TextBlock x:Name="TillSyncStatusText" Text="" FontSize="12" Margin="0,8,0,0"
+                               Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
             <Border x:Name="ResultsCard" Style="{StaticResource Card}" Margin="0,20,0,0"
                     Visibility="Collapsed" MinWidth="520">
                 <ItemsControl x:Name="ResultsList">
