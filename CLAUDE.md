@@ -66,7 +66,10 @@ Mavridis (`mavridis9`).
    via Orexsys's `logdelete` audit), and — only with «Αντιστοίχιση παραγγελιών με e-mail» on —
    `ALTER TRIGGER EFOM_BIUD_TRG` through `EfomTriggerGuard` (owner decision 21/09/2026), and —
    from the «Πελάτες» screen — `CUST` + `CUSP` INSERT for a new customer (never update/delete).
-   PointToOrder additionally: create customer, send invitation.
+   And — «Ακύρωση παραγγελίας» in the customer's orders window (owner decision 22/09/2026) —
+   `EXECUTE PROCEDURE CANCELORDER`, Orexsys's own cancellation, the same call ΔΙΑΧΕΙΡΙΣΗ makes.
+   PointToOrder additionally: create customer, send invitation, create order (till orders →
+   history), cancel order (admin `PUT status=CANCELLED`).
    **Nothing else in the database is ever written.**
 6. **`hierarchyLevel: "PARENT"` is required** on create; missing fields surface as `500`.
 7. **New offers are born hidden** (`isSellable=false`); the flow flips them visible when
@@ -198,3 +201,14 @@ git-ignored and excluded from publish. The sidebar shows the version.
   / `TagToExternalId`). `SendAsync` = single-flight + register (`SentFile`, shared by button and
   service) + full-history re-check + draft DELETE on failure before submit. Keep all three inside
   `SendAsync`, not in callers.
+- **Cancel in both platforms with one click (22/09).** «Ακύρωση παραγγελίας» in the customer's
+  orders window: `OrderCancel.Decide(cancelledInOrexsys, platformStatus)` → None / OrexsysOnly /
+  PlatformOnly / Both — only the side(s) still active are touched, so a second press does nothing.
+  Orexsys side = `CANCELORDER` (ported from ΔΙΑΧΕΙΡΙΣΗ's DayClose.Cancel); platform side = admin
+  `PUT status=CANCELLED` on the uuid. Two traps found live: (1) the platform's customer-history
+  endpoint (`customers/orders`) silently DROPS cancelled orders, so it cannot tell «already
+  cancelled there» from «never existed» — `orders/search` with `orderToken` finds every status;
+  (2) the till-sent token therefore comes from the local registry (`LoadSentRegisterWithTokens`),
+  never from the platform's history; the platform-native token comes from `EFOM.JSON
+  orderDetails.orderNumber` (substring scan — the SQL CAST can truncate the JSON). Cancelled
+  Orexsys orders are now SHOWN in the list (status «Ακυρωμένη») but still excluded from the totals.

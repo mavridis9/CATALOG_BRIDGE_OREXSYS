@@ -214,6 +214,27 @@ namespace CatalogBridge
             return set;
         }
 
+        // ORDMID → the token it went as. Unlike LoadSentRegister, keeps the token too - OrderCancel
+        // (22/09) needs it to look the order up on PointToOrder even after it has been cancelled
+        // there and dropped from the customer's own history.
+        public static Dictionary<long, string> LoadSentRegisterWithTokens() => LoadSentRegisterWithTokens(SentFile);
+
+        public static Dictionary<long, string> LoadSentRegisterWithTokens(string file)
+        {
+            var map = new Dictionary<long, string>();
+            try
+            {
+                if (File.Exists(file))
+                    foreach (string line in File.ReadAllLines(file))
+                    {
+                        var parts = line.Split('\t');
+                        if (parts.Length >= 2 && long.TryParse(parts[0], out long id) && parts[1].Length > 0) map[id] = parts[1];
+                    }
+            }
+            catch { }
+            return map;
+        }
+
         public static void RememberSent(long ordmId, string token) => RememberSent(SentFile, ordmId, token);
 
         public static void RememberSent(string file, long ordmId, string token)
@@ -375,6 +396,40 @@ namespace CatalogBridge
             if (i < 0) return null;
             int start = i + EfomTriggerGuard.SentOrderTag.Length, end = comment.IndexOf(']', start);
             return end > start && long.TryParse(comment[start..end], out long id) ? Plan.ExternalIdFor(id) : null;
+        }
+
+        // ---- finding one order by its token, and a plain cancel (owner, 22/09/2026: cancel in
+        // both platforms with one click) -----------------------------------------------------
+
+        public sealed record PlatformOrderSummary(string Uuid, string Token, string Status, string ExternalOrderId, string Comment);
+
+        // The one order with this token, in WHATEVER state - CANCELLED included. Found the hard
+        // way (22/09): the customer-history endpoint (`customers/orders`, used by LoadSentAsync)
+        // silently drops cancelled/deleted orders, so it cannot tell OrderCancel "already done
+        // there" from "never existed". The admin search (`orders/search`, filter `orderToken`)
+        // does not have that gap. Null = no order with this token at all.
+        public static async Task<PlatformOrderSummary?> FindOrderByTokenAsync(PointToOrderApiClient api, string token)
+        {
+            var (st, body) = await api.ProbePostAsync($"/api/v1/stores/{api.StoreId}/orders/search?page=0&size=1",
+                new Dictionary<string, object> { ["orderToken"] = token });
+            if (st >= 300) throw new PointToOrderException($"Δεν βρέθηκε η παραγγελία {token} στο PointToOrder ({st}): {body}");
+            using var doc = JsonDocument.Parse(body);
+            if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array || data.GetArrayLength() == 0)
+                return null;
+            var o = data[0];
+            return new PlatformOrderSummary(
+                o.TryGetProperty("uuid", out var u) && u.ValueKind == JsonValueKind.String ? (u.GetString() ?? "") : "",
+                o.TryGetProperty("orderToken", out var t) && t.ValueKind == JsonValueKind.String ? (t.GetString() ?? "") : "",
+                o.TryGetProperty("status", out var s) && s.ValueKind == JsonValueKind.String ? (s.GetString() ?? "") : "",
+                o.TryGetProperty("externalOrderId", out var e) && e.ValueKind == JsonValueKind.String ? (e.GetString() ?? "") : "",
+                o.TryGetProperty("comment", out var c) && c.ValueKind == JsonValueKind.String ? (c.GetString() ?? "") : "");
+        }
+
+        public static async Task CancelOnPlatformAsync(PointToOrderApiClient api, string uuid)
+        {
+            var (sc, body) = await api.ProbePutAsync($"/api/v2/user/stores/{api.StoreId}/orders/{uuid}",
+                new Dictionary<string, object> { ["status"] = "CANCELLED", ["keysToUpdate"] = new[] { "status" } });
+            if (sc >= 300) throw new PointToOrderException($"Η ακύρωση στο PointToOrder απέτυχε ({sc}): {body}");
         }
     }
 }

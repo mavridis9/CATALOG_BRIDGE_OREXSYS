@@ -9,15 +9,17 @@ using System.Windows.Controls;
 namespace CatalogBridge
 {
     // Double-click on a customer in «Πελάτες»: every real order of theirs in Orexsys — online
-    // and at the till — with the count, the total and the average per order; and «Αποστολή στο
-    // PointToOrder» for a till order, so the history matches on both sides (TillOrderSender).
+    // and at the till — with the count, the total and the average per order; «Αποστολή στο
+    // PointToOrder» for a till order, so the history matches on both sides (TillOrderSender);
+    // and «Ακύρωση παραγγελίας» — one click, both platforms (OrderCancel, owner 22/09/2026).
     public partial class CustomerOrdersWindow : Window
     {
         private static readonly CultureInfo Greek = new("el-GR");
         private readonly Settings settings;
         private readonly OrexsysCustomer customer;
         private long? platformCustomerId;
-        private Dictionary<string, string> sent = new();
+        private Dictionary<long, string> sentTokens = new();   // ORDMID → token, from the local registry
+        private Dictionary<string, TillOrderSender.PlatformOrderSummary?> byToken = new(StringComparer.OrdinalIgnoreCase);
 
         public CustomerOrdersWindow(Settings settings, OrexsysCustomer customer)
         {
@@ -36,15 +38,24 @@ namespace CatalogBridge
             {
                 var orders = await CustomerDirectory.LoadOrdersAsync(settings, customer.CustId);
 
-                // What the platform already holds for this customer: their account, and the
-                // till orders sent before (externalOrderId OREXSYS-<ORDMID>).
+                // The PointToOrder side of each order: the till-sent token comes from the local
+                // registry (survives the order being cancelled there - the platform's own
+                // customer-history endpoint silently drops cancelled/deleted orders, found 22/09
+                // while building the cancel button); the platform-native token comes from
+                // Orexsys's EFOM.JSON. Each distinct token is then looked up on the platform by
+                // itself (orders/search, which DOES still find a cancelled one) for its live status.
+                sentTokens = TillOrderSender.LoadSentRegisterWithTokens();
+                byToken = new(StringComparer.OrdinalIgnoreCase);
                 if (settings.IsApiConfigured && customer.Email.Length > 0)
                 {
                     try
                     {
                         using var api = new PointToOrderApiClient(settings);
                         platformCustomerId = await api.FindCustomerIdAsync(customer.Email, null);
-                        sent = platformCustomerId is long id ? await TillOrderSender.LoadSentAsync(api, id) : new();
+                        var tokens = orders.Orders.Select(PlatformTokenFor).Where(t => t != null).Select(t => t!)
+                            .Distinct(StringComparer.OrdinalIgnoreCase);
+                        foreach (var token in tokens)
+                            byToken[token] = await TillOrderSender.FindOrderByTokenAsync(api, token);
                     }
                     catch (Exception ex)
                     {
@@ -52,8 +63,12 @@ namespace CatalogBridge
                     }
                 }
                 foreach (var o in orders.Orders)
-                    o.PlatformText = o.FromPlatform ? "από P2O"
-                        : sent.TryGetValue(TillOrderSender.Plan.ExternalIdFor(o.OrdmId), out string? token) ? $"✓ {token}" : "";
+                {
+                    string? token = PlatformTokenFor(o);
+                    var plat = token != null && byToken.TryGetValue(token, out var p) ? p : null;
+                    string tag = plat != null && plat.Status is "CANCELLED" or "DELETED" ? " (ακυρωμένη)" : "";
+                    o.PlatformText = o.FromPlatform ? "από P2O" + tag : token != null ? $"✓ {token}" + tag : "";
+                }
 
                 OrdersGrid.ItemsSource = orders.Orders;
                 CountText.Text = orders.Count.ToString();
@@ -76,10 +91,29 @@ namespace CatalogBridge
 
         private void OrdersGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateButton();
 
+        // The PointToOrder token for this Orexsys order, however it is known - from EFOM.JSON for
+        // one that arrived FROM the platform, from the local registry for a till order pushed
+        // there. Null = no PointToOrder order known for it at all.
+        private string? PlatformTokenFor(CustomerDirectory.CustomerOrder o) =>
+            o.FromPlatform ? (o.PlatformOrderNumber.Length > 0 ? o.PlatformOrderNumber : null)
+                            : (sentTokens.TryGetValue(o.OrdmId, out string? t) ? t : null);
+
+        // What OrderCancel.Decide sees: null = no PointToOrder order at all; "" = one is known by
+        // token but its live status could not be read (API down at load, or the search found
+        // nothing) - still treated as active, so the button offers to act, and the click handler
+        // explains itself if it really cannot find it there.
+        private CancelSide CancelDecisionFor(CustomerDirectory.CustomerOrder o)
+        {
+            string? token = PlatformTokenFor(o);
+            string? status = token == null ? null : (byToken.TryGetValue(token, out var p) && p != null ? p.Status : "");
+            return OrderCancel.Decide(o.CancelledInOrexsys, status);
+        }
+
         private void UpdateButton()
         {
             var o = Selected;
-            SendButton.IsEnabled = o != null && !o.FromPlatform && o.PlatformText.Length == 0 && platformCustomerId != null;
+            SendButton.IsEnabled = o != null && !o.FromPlatform && !o.CancelledInOrexsys && o.PlatformText.Length == 0 && platformCustomerId != null;
+            CancelOrderButton.IsEnabled = o != null && CancelDecisionFor(o) != CancelSide.None;
         }
 
         private async void SendButton_Click(object sender, RoutedEventArgs e)
@@ -137,6 +171,74 @@ namespace CatalogBridge
             {
                 CustomerDirectory.Log($"PointToOrder: till order {o.OrdmId} FAILED - {ex.Message}");
                 StatusText.Text = "Η αποστολή απέτυχε: " + ex.Message;
+                UpdateButton();
+            }
+        }
+
+        private async void CancelOrderButton_Click(object sender, RoutedEventArgs e)
+        {
+            var o = Selected;
+            if (o == null) return;
+
+            string? token = PlatformTokenFor(o);
+            TillOrderSender.PlatformOrderSummary? plat = token != null && byToken.TryGetValue(token, out var p) ? p : null;
+            var decision = OrderCancel.Decide(o.CancelledInOrexsys, token == null ? null : (plat?.Status ?? ""));
+
+            if (decision == CancelSide.None)
+            {
+                StatusText.Text = "Είναι ήδη ακυρωμένη και στα δύο συστήματα — δεν χρειάζεται τίποτα.";
+                return;
+            }
+            if (token != null && plat == null)
+            {
+                StatusText.Text = $"Η παραγγελία «{token}» δεν βρέθηκε στο PointToOrder (ή δεν διαβάστηκε) — " +
+                                   "κλείστε και ξανανοίξτε αυτό το παράθυρο και ξαναδοκιμάστε.";
+                return;
+            }
+
+            string where = decision switch
+            {
+                CancelSide.Both => "στο Orexsys ΚΑΙ στο PointToOrder",
+                CancelSide.OrexsysOnly => "στο Orexsys (στο PointToOrder είναι ήδη ακυρωμένη)",
+                CancelSide.PlatformOnly => "στο PointToOrder (στο Orexsys είναι ήδη ακυρωμένη)",
+                _ => "",
+            };
+            var sure = MessageBox.Show(
+                $"ΑΚΥΡΩΣΗ παραγγελίας #{o.OrdmId} ({o.When:dd/MM/yyyy HH:mm}, {o.Total:0.00} €)\n{o.Items}\n\n" +
+                $"Θα ακυρωθεί {where}.\n\n" +
+                (decision != CancelSide.PlatformOnly
+                    ? "Στο Orexsys γίνεται όπως στο ταμείο: αντιστρέφονται τα είδη και οι πληρωμές και εκδίδεται " +
+                      "ακυρωτικό παραστατικό. ΔΕΝ αναιρείται.\n\n"
+                    : "") +
+                "Συνέχεια;",
+                "Ακύρωση παραγγελίας", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (sure != MessageBoxResult.Yes) { StatusText.Text = "Ακυρώθηκε η ενέργεια."; return; }
+
+            CancelOrderButton.IsEnabled = false;
+            bool didOrexsys = false, didPlatform = false;
+            try
+            {
+                if (decision is CancelSide.OrexsysOnly or CancelSide.Both)
+                {
+                    string remarks = $"Ακύρωση από Γέφυρα Καταλόγου ({Environment.UserName})";
+                    await OrderCancel.CancelInOrexsysAsync(settings, o.OrdmId, remarks);
+                    didOrexsys = true;
+                    CustomerDirectory.Log($"cancel: order {o.OrdmId} cancelled in Orexsys for CUSTID {customer.CustId}");
+                }
+                if (decision is CancelSide.PlatformOnly or CancelSide.Both)
+                {
+                    using var api = new PointToOrderApiClient(settings);
+                    await TillOrderSender.CancelOnPlatformAsync(api, plat!.Uuid);
+                    didPlatform = true;
+                    CustomerDirectory.Log($"cancel: order {o.OrdmId} cancelled on PointToOrder ({token}) for CUSTID {customer.CustId}");
+                }
+                await LoadAsync($"✓ Η παραγγελία #{o.OrdmId} ακυρώθηκε {where}.");
+            }
+            catch (Exception ex)
+            {
+                string done = didOrexsys ? " (στο Orexsys ΕΓΙΝΕ ήδη)" : didPlatform ? " (στο PointToOrder ΕΓΙΝΕ ήδη)" : "";
+                CustomerDirectory.Log($"cancel: order {o.OrdmId} FAILED{done} - {ex.Message}");
+                StatusText.Text = $"Η ακύρωση απέτυχε{done}: {ex.Message}";
                 UpdateButton();
             }
         }

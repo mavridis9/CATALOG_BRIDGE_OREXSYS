@@ -58,6 +58,17 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   it — while a failure after submit (e.g. the total check) is recorded as sent. Verified on
   1110: refused by the platform check, then by the register; a bogus line left no draft behind.
   The duplicate my check created before the fix (N3-38) is cancelled.
+- **«Ακύρωση παραγγελίας» — one click, both platforms** (owner, 22/09). In the customer's orders
+  window: cancels the selected order in Orexsys (`CANCELORDER`, the till's own procedure — items
+  and payments reversed, cancellation document issued, not undoable) AND on PointToOrder (admin
+  status → CANCELLED), touching only the side(s) still active: already cancelled in Orexsys →
+  only the platform; already cancelled on the platform → only Orexsys; both → nothing. The
+  confirmation says exactly which. A failure half-way reports what DID happen, and the next press
+  finishes the rest. Cancelled Orexsys orders now appear in the list («Ακυρωμένη», not counted).
+  Found while building it: PointToOrder's customer-history endpoint silently drops cancelled
+  orders — `orders/search` by token is used instead, and the till-sent token is read from the
+  local registry, never from the platform. Decision logic unit-tested; the platform side was
+  verified live on 1110; the Orexsys side runs the same call ΔΙΑΧΕΙΡΙΣΗ has used since 1.7.
 - **Automatic: «Παραγγελίες ταμείου → PointToOrder» switch on the home page.** Owner request
   22/09. `TillOrderSyncService` runs every 2 minutes while the app is open: every closed
   (STS 4), not cancelled till order — not one that came from the platform — placed since the

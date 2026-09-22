@@ -32,6 +32,24 @@ namespace CatalogBridge.Tests
         }
 
         [TestMethod]
+        public void RegisterAlsoGivesBackTheToken_ForTheCancelButton()
+        {
+            string file = TempFile();
+            try
+            {
+                TillOrderSender.RememberSent(file, 10, "TP-5Z");
+                TillOrderSender.RememberSent(file, 11, "");          // sent, token unknown - no use for a lookup
+                File.AppendAllText(file, "garbage\n");
+
+                var map = TillOrderSender.LoadSentRegisterWithTokens(file);
+                Assert.AreEqual("TP-5Z", map[10]);
+                Assert.IsFalse(map.ContainsKey(11));
+                Assert.AreEqual(0, TillOrderSender.LoadSentRegisterWithTokens(file + ".missing").Count);
+            }
+            finally { File.Delete(file); }
+        }
+
+        [TestMethod]
         public void HistoryEntryCountsOnlyWhenItIsOursAndAlive()
         {
             static JsonElement J(string json) => JsonDocument.Parse(json).RootElement;

@@ -271,7 +271,8 @@ namespace CatalogBridge
 
         // ---- the customer's orders (double-click) --------------------------------------------
 
-        public sealed record CustomerOrder(long OrdmId, DateTime When, string Kind, string Status, decimal Total, string Items, bool FromPlatform)
+        public sealed record CustomerOrder(long OrdmId, DateTime When, string Kind, string Status, decimal Total, string Items,
+            bool FromPlatform, bool CancelledInOrexsys, string PlatformOrderNumber)
         {
             // Filled by the orders window from PointToOrder: «από P2O» for an order that arrived
             // from the platform, the token of the copy for a till order already sent, else blank.
@@ -281,9 +282,11 @@ namespace CatalogBridge
         public sealed class CustomerOrders
         {
             public List<CustomerOrder> Orders { get; } = new();
-            public int Cancelled { get; set; }
-            public int Count => Orders.Count;
-            public decimal Total => Orders.Sum(o => o.Total);
+            // Cancelled (in Orexsys) orders are shown - so the «cancel the other side» button has
+            // something to select - but left out of the counts and the totals, same as before.
+            public int Cancelled => Orders.Count(o => o.CancelledInOrexsys);
+            public int Count => Orders.Count(o => !o.CancelledInOrexsys);
+            public decimal Total => Orders.Where(o => !o.CancelledInOrexsys).Sum(o => o.Total);
             public decimal Average => Count == 0 ? 0m : Math.Round(Total / Count, 2);
             public DateTime? First => Orders.Count == 0 ? null : Orders.Min(o => o.When);
             public DateTime? Last => Orders.Count == 0 ? null : Orders.Max(o => o.When);
@@ -292,8 +295,12 @@ namespace CatalogBridge
         // Every real order of the customer, online and at the till. The customer link is the
         // one every Orexsys reader uses (CARDCUSTID when set, else CUSTID — a till sale on a
         // card carries the person in CARDCUSTID with CUSTID 0); cancelled = CANCELED = 1 or
-        // TOTAL = 0, counted separately and left out of the totals. Items = the main lines
-        // (ORDDID = PARENTID; extras hang off them). Read-only.
+        // TOTAL = 0 (shown, not hidden - see CustomerOrders.Cancelled). Items = the main lines
+        // (ORDDID = PARENTID; extras hang off them). PlatformOrderNumber is the PointToOrder
+        // token for an order that arrived FROM the platform, read out of EFOM.JSON
+        // (orderDetails.orderNumber — that field survives; externalOrderId in the platform's own
+        // history does not, see TagToExternalId) so a one-click cancel can find it there too.
+        // Read-only.
         public static Task<CustomerOrders> LoadOrdersAsync(Settings settings, long custId) => Task.Run(() =>
         {
             var result = new CustomerOrders();
@@ -302,6 +309,7 @@ namespace CatalogBridge
             const string sql = @"
                 SELECT m.ORDMID, m.ODATE, m.OTIME, m.OTYPE, m.STS, m.CANCELED, m.TOTAL,
                        (SELECT COUNT(*) FROM EFOM e WHERE e.ORDMID = m.ORDMID) AS FROMP2O,
+                       (SELECT FIRST 1 CAST(e.JSON AS VARCHAR(8000)) FROM EFOM e WHERE e.ORDMID = m.ORDMID) AS EFOMJSON,
                        (SELECT LIST(TRIM(d.NAME) || IIF(d.QTY <> 1, ' ×' || CAST(d.QTY AS INTEGER), ''), ', ')
                           FROM ORDD d WHERE d.ORDMID = m.ORDMID AND d.ORDDID = d.PARENTID AND d.QTY > 0) AS ITEMS
                 FROM ORDM m
@@ -314,7 +322,6 @@ namespace CatalogBridge
             {
                 decimal total = reader["TOTAL"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["TOTAL"]);
                 bool cancelled = (reader["CANCELED"] != DBNull.Value && Convert.ToInt32(reader["CANCELED"]) == 1) || total == 0m;
-                if (cancelled) { result.Cancelled++; continue; }
 
                 var date = reader["ODATE"] == DBNull.Value ? DateTime.MinValue : Convert.ToDateTime(reader["ODATE"]);
                 var time = reader["OTIME"] is TimeSpan t ? t : TimeSpan.Zero;   // Firebird TIME → TimeSpan
@@ -323,11 +330,26 @@ namespace CatalogBridge
                 result.Orders.Add(new CustomerOrder(
                     Convert.ToInt64(reader["ORDMID"]), date + time,
                     otype switch { 2 => "Online / delivery", 3 => "Take away", 1 => "Τραπέζι", _ => $"Τύπος {otype}" },
-                    sts == 4 ? "Κλειστή" : "Ανοιχτή",
-                    total, Str(reader["ITEMS"]), Convert.ToInt32(reader["FROMP2O"]) > 0));
+                    cancelled ? "Ακυρωμένη" : (sts == 4 ? "Κλειστή" : "Ανοιχτή"),
+                    total, Str(reader["ITEMS"]), Convert.ToInt32(reader["FROMP2O"]) > 0, cancelled,
+                    PlatformOrderNumberFromEfomJson(Str(reader["EFOMJSON"]))));
             }
             return result;
         });
+
+        // «"orderDetails":{"orderNumber":"TP-5Z",...}» → "TP-5Z"; anything else (no EFOM row, the
+        // field missing) → "" — treated as «no PointToOrder order known». A plain substring scan,
+        // not JsonDocument.Parse: the JSON is CAST to VARCHAR(8000) in SQL and a big order (many
+        // lines) can be cut off before its closing brace, which would make the whole document
+        // invalid even though "orderNumber" — near the very start, before orderItems — is intact.
+        public static string PlatformOrderNumberFromEfomJson(string json)
+        {
+            const string needle = "\"orderNumber\":\"";
+            int i = json.IndexOf(needle, StringComparison.Ordinal);
+            if (i < 0) return "";
+            int start = i + needle.Length, end = json.IndexOf('"', start);
+            return end > start ? json[start..end] : "";
+        }
 
         // ---- «Κάρτα...»: a card for a customer that has none --------------------------------
 
