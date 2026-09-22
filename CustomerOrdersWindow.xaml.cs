@@ -109,9 +109,10 @@ namespace CatalogBridge
                 var catalog = await api.GetCatalogAsync();
                 var prices = catalog.Offers.GroupBy(x => x.OfferId).ToDictionary(g => g.Key, g => g.First().Price);
 
-                string? problem = TillOrderSender.CheckIdentical(lines, offers, prices, out var offerByOrddId);
+                var placeholders = await TillOrderSender.EnsurePlaceholdersAsync(api, catalog);
+                string? problem = TillOrderSender.BuildPlatformLines(lines, offers, prices, placeholders, out var platformLines);
                 if (problem != null) { StatusText.Text = problem; return; }
-                var plan = new TillOrderSender.Plan(head.OrdmId, head.When, head.Total, lines, offerByOrddId,
+                var plan = new TillOrderSender.Plan(head.OrdmId, head.When, head.Total, lines, platformLines,
                     TillOrderSender.Plan.ExternalIdFor(head.OrdmId));
 
                 var sure = MessageBox.Show(

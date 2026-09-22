@@ -34,6 +34,18 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **Products not on PointToOrder ride on two hidden placeholders, so every till order can go
+  with the exact total** (owner decision 22/09: never visible when ordering). «Αγορά στο
+  κατάστημα» 1,00 € × euros and «Αγορά στο κατάστημα (λεπτά)» 0,01 € × cents, in a category
+  «ΚΑΤΑΣΤΗΜΑ», created by the app the first time they are needed and kept hidden
+  (`isSellable` false) **and** Inactive — verified on 1110 that a hidden, inactive product can
+  still be put into an order by the app. Products that are online go as themselves; one whose
+  price differs from the till still refuses the whole order (a catalogue to fix). The order's
+  comment lists the real items («ΠΡΟΙΟΝ 13% ×1 100,00€»). Verified live: Stratos's till order
+  #5 (100,00, «ΠΡΟΙΟΝ 13%», not online) went as 100 × «Αγορά στο κατάστημα» → NN-3K CLOSED
+  100,00 in his history; the connector brought it back as EFOM 8 and the loop guard left it at
+  STATUS -1 — no till order, no customer. Also found: the admin submit call answers 500 when
+  `paymentStatus` is sent with it — status only now.
 - **Automatic: «Παραγγελίες ταμείου → PointToOrder» switch on the home page.** Owner request
   22/09. `TillOrderSyncService` runs every 2 minutes while the app is open: every closed
   (STS 4), not cancelled till order — not one that came from the platform — placed since the

@@ -19,32 +19,47 @@ namespace CatalogBridge
     {
         public sealed record Line(long OrddId, long ItmsId, long ItmvId, string Name, decimal Qty, decimal Price, decimal Total);
 
+        // Lines the platform receives: a real product (offerId, quantity) or the placeholder
+        // that carries the amount of everything that is not on PointToOrder.
+        public sealed record PlatformLine(long OfferId, int Quantity, string Label);
+
         public sealed record Plan(long OrdmId, DateTime When, decimal Total, List<Line> Lines,
-            Dictionary<long, long> OfferByOrddId, string ExternalId)
+            List<PlatformLine> PlatformLines, string ExternalId)
         {
             public static string ExternalIdFor(long ordmId) => $"OREXSYS-{ordmId}";
         }
 
+        // The two hidden placeholders (owner decision 22/09/2026): products not on PointToOrder
+        // go as «Αγορά στο κατάστημα» × euros + «(λεπτά)» × cents, so the total stays exact
+        // while nothing is ever visible to customers (isSellable false + Inactive).
+        public const string PlaceholderEuroName = "Αγορά στο κατάστημα";
+        public const string PlaceholderCentName = "Αγορά στο κατάστημα (λεπτά)";
+        public const string PlaceholderCategoryName = "ΚΑΤΑΣΤΗΜΑ";
+
         // ---- pure rule (unit-tested) ------------------------------------------------------
 
-        // offers: EFIC (ITMSID, ITMVID) → offerId; prices: offerId → platform price.
-        // Null problem = sendable.
-        public static string? CheckIdentical(
+        // offers: EFIC (ITMSID, ITMVID) → offerId; prices: offerId → platform price;
+        // placeholders: the euro and cent products (0 = none, then unmapped lines refuse).
+        // Null problem = sendable. A mapped product with a different price still refuses: that
+        // is a catalogue to fix, not an amount to hide in the placeholder.
+        public static string? BuildPlatformLines(
             IReadOnlyList<Line> lines, IReadOnlyDictionary<(long, long), long> offers,
-            IReadOnlyDictionary<long, decimal> prices, out Dictionary<long, long> offerByOrddId)
+            IReadOnlyDictionary<long, decimal> prices, (long Euro, long Cent) placeholders,
+            out List<PlatformLine> platformLines)
         {
-            offerByOrddId = new Dictionary<long, long>();
+            platformLines = new List<PlatformLine>();
             if (lines.Count == 0) return "Η παραγγελία δεν έχει γραμμές.";
 
             var problems = new List<string>();
+            decimal other = 0m;
+            var otherNames = new List<string>();
             foreach (var line in lines)
             {
-                if (line.Qty != Math.Floor(line.Qty) || line.Qty <= 0)
-                    problems.Add($"«{line.Name}»: ποσότητα {line.Qty} — το PointToOrder δέχεται μόνο ακέραιες");
                 if (!offers.TryGetValue((line.ItmsId, line.ItmvId), out long offerId))
                 {
-                    problems.Add($"«{line.Name}» δεν υπάρχει στο PointToOrder" +
-                                 (line.ItmvId != 0 ? " (αυτό το μέγεθος)" : ""));
+                    if (placeholders.Euro == 0 || placeholders.Cent == 0)
+                        problems.Add($"«{line.Name}» δεν υπάρχει στο PointToOrder" + (line.ItmvId != 0 ? " (αυτό το μέγεθος)" : ""));
+                    else { other += line.Total; otherNames.Add($"{line.Name} ×{line.Qty:0.##}"); }
                     continue;
                 }
                 if (!prices.TryGetValue(offerId, out decimal platformPrice))
@@ -57,13 +72,28 @@ namespace CatalogBridge
                     problems.Add($"«{line.Name}»: τιμή ταμείου {line.Price:0.00}, τιμή PointToOrder {platformPrice:0.00}");
                     continue;
                 }
-                offerByOrddId[line.OrddId] = offerId;
+                if (line.Qty != Math.Floor(line.Qty) || line.Qty <= 0)
+                {
+                    problems.Add($"«{line.Name}»: ποσότητα {line.Qty} — το PointToOrder δέχεται μόνο ακέραιες");
+                    continue;
+                }
+                platformLines.Add(new PlatformLine(offerId, (int)line.Qty, line.Name));
             }
 
+            if (other < 0m) problems.Add("αρνητικό ποσό για τα προϊόντα εκτός PointToOrder");
             if (problems.Count > 0)
             {
-                offerByOrddId.Clear();   // all or nothing
+                platformLines.Clear();   // all or nothing
                 return "Δεν στέλνεται — η παραγγελία δεν θα ήταν ίδια: " + string.Join("· ", problems);
+            }
+
+            if (other > 0m)
+            {
+                int cents = (int)Math.Round(other * 100m, MidpointRounding.AwayFromZero);
+                int euros = cents / 100, rest = cents % 100;
+                string label = string.Join(", ", otherNames);
+                if (euros > 0) platformLines.Add(new PlatformLine(placeholders.Euro, euros, label));
+                if (rest > 0) platformLines.Add(new PlatformLine(placeholders.Cent, rest, label));
             }
             return null;
         }
@@ -128,6 +158,27 @@ namespace CatalogBridge
             return map;
         });
 
+
+        // The two placeholder products of this store: found by name in the catalogue, created
+        // (hidden + Inactive, in the hidden category «ΚΑΤΑΣΤΗΜΑ») the first time they are
+        // needed. Never shown to customers: isSellable false hides an offer from the shop.
+        public static async Task<(long Euro, long Cent)> EnsurePlaceholdersAsync(PointToOrderApiClient api, CatalogSnapshot catalog)
+        {
+            long euro = catalog.Offers.FirstOrDefault(o => o.Name == PlaceholderEuroName)?.OfferId ?? 0;
+            long cent = catalog.Offers.FirstOrDefault(o => o.Name == PlaceholderCentName)?.OfferId ?? 0;
+            if (euro != 0 && cent != 0) return (euro, cent);
+
+            long categoryId = catalog.Categories.FirstOrDefault(c => c.Name == PlaceholderCategoryName)?.CategoryId
+                ?? (await api.CreateCategoryAsync(catalog.CatalogId, PlaceholderCategoryName)).Id;
+            var created = new List<long>();
+            if (euro == 0) { euro = (await api.CreateOfferAsync(catalog.CatalogId, categoryId, PlaceholderEuroName, 1.00m)).Id; created.Add(euro); }
+            if (cent == 0) { cent = (await api.CreateOfferAsync(catalog.CatalogId, categoryId, PlaceholderCentName, 0.01m)).Id; created.Add(cent); }
+            // Born hidden; Inactive as well, so they cannot be ordered online in any state.
+            await api.SetOfferStatusAsync(catalog.CatalogId, created, OfferItemType.Inactive, sellable: false);
+            CustomerDirectory.Log($"PointToOrder: placeholders created euro={euro} cent={cent} (hidden, inactive)");
+            return (euro, cent);
+        }
+
         // ---- the send ----------------------------------------------------------------------
 
         public sealed record SendResult(string OrderUuid, string Token, string Status);
@@ -145,15 +196,15 @@ namespace CatalogBridge
             if (c1 >= 300) throw new PointToOrderException($"Η δημιουργία απέτυχε ({c1}): {b1}");
             string uuid = JsonDocument.Parse(b1).RootElement.GetProperty("uuid").GetString()!;
 
-            foreach (var line in plan.Lines)
+            foreach (var line in plan.PlatformLines)
             {
-                progress?.Invoke($"Προσθήκη «{line.Name}»...");
+                progress?.Invoke($"Προσθήκη «{line.Label}»...");
                 var (c2, b2) = await api.ProbePutAsync($"/api/v1/stores/{store}/orders/{uuid}/orderItems", new Dictionary<string, object>
                 {
-                    ["offerId"] = plan.OfferByOrddId[line.OrddId], ["quantity"] = (int)line.Qty,
+                    ["offerId"] = line.OfferId, ["quantity"] = line.Quantity,
                     ["storeId"] = long.Parse(store), ["uuid"] = Guid.NewGuid().ToString(),
                 });
-                if (c2 >= 300) throw new PointToOrderException($"Η προσθήκη «{line.Name}» απέτυχε ({c2}): {b2}. Η παραγγελία {uuid} έμεινε πρόχειρη στο PointToOrder.");
+                if (c2 >= 300) throw new PointToOrderException($"Η προσθήκη «{line.Label}» απέτυχε ({c2}): {b2}. Η παραγγελία {uuid} έμεινε πρόχειρη στο PointToOrder.");
             }
 
             progress?.Invoke("Σύνδεση με τον πελάτη...");
@@ -161,15 +212,19 @@ namespace CatalogBridge
             {
                 ["customerUserId"] = customerUserId, ["customerName"] = customerName,
                 ["externalOrderId"] = plan.ExternalId, ["deliveryMethod"] = "NO_LOCATION",
-                ["comment"] = $"{EfomTriggerGuard.SentOrderTag}{plan.OrdmId}] Αγορά στο κατάστημα {plan.When:dd/MM/yyyy HH:mm}",
+                ["comment"] = $"{EfomTriggerGuard.SentOrderTag}{plan.OrdmId}] Αγορά στο κατάστημα {plan.When:dd/MM/yyyy HH:mm}: " +
+                              string.Join(", ", plan.Lines.Select(l => $"{l.Name} ×{l.Qty:0.##} {l.Total:0.00}€")),
             });
             if (c3 >= 300) throw new PointToOrderException($"Η σύνδεση με τον πελάτη απέτυχε ({c3}): {b3}. Η παραγγελία {uuid} έμεινε πρόχειρη στο PointToOrder.");
 
             progress?.Invoke("Υποβολή...");
             var (c4, b4) = await api.ProbePutAsync($"/api/v2/user/stores/{store}/orders/{uuid}", new Dictionary<string, object>
             {
-                ["status"] = "SUBMITTED", ["paymentStatus"] = "PAID_OFFLINE",
-                ["keysToUpdate"] = new[] { "status", "paymentStatus" },
+                // status ONLY: adding paymentStatus to this call answers 500 (seen 22/09); the
+                // platform ignores paymentStatus on the public update as well, so the comment
+                // is what says «paid at the shop».
+                ["status"] = "SUBMITTED",
+                ["keysToUpdate"] = new[] { "status" },
             });
             if (c4 >= 300) throw new PointToOrderException($"Η υποβολή απέτυχε ({c4}): {b4}. Η παραγγελία {uuid} έμεινε πρόχειρη στο PointToOrder.");
 

@@ -133,6 +133,7 @@ namespace CatalogBridge
                 var offers = await TillOrderSender.LoadOffersAsync(settings);
                 var catalog = await api.GetCatalogAsync();
                 var prices = catalog.Offers.GroupBy(x => x.OfferId).ToDictionary(g => g.Key, g => g.First().Price);
+                var placeholders = await TillOrderSender.EnsurePlaceholdersAsync(api, catalog);
                 var platformIds = new Dictionary<string, long?>(StringComparer.OrdinalIgnoreCase);
                 var alreadyOnPlatform = new Dictionary<long, Dictionary<string, string>>();
 
@@ -159,10 +160,10 @@ namespace CatalogBridge
                         }
 
                         var (head, lines) = await TillOrderSender.LoadOrderAsync(settings, c.OrdmId);
-                        string? problem = TillOrderSender.CheckIdentical(lines, offers, prices, out var map);
+                        string? problem = TillOrderSender.BuildPlatformLines(lines, offers, prices, placeholders, out var platformLines);
                         if (problem != null) { Refuse(c, problem); continue; }
 
-                        var plan = new TillOrderSender.Plan(head.OrdmId, head.When, head.Total, lines, map, externalId);
+                        var plan = new TillOrderSender.Plan(head.OrdmId, head.When, head.Total, lines, platformLines, externalId);
                         var result = await TillOrderSender.SendAsync(api, customerId, c.CustName, plan);
                         RememberSent(c.OrdmId, result.Token);
                         sentThisSession.Add(c.OrdmId);
