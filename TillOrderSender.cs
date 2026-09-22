@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.IO;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FirebirdSql.Data.FirebirdClient;
@@ -183,8 +185,81 @@ namespace CatalogBridge
 
         public sealed record SendResult(string OrderUuid, string Token, string Status);
 
+        // ---- «only once» (owner, 22/09/2026) --------------------------------------------------
+        //
+        // Three fences, all inside SendAsync so the button and the automatic run share them:
+        //  1. One send at a time in this process (the timer and the button cannot overlap).
+        //  2. Right before creating anything, the local register (sent_till_orders.txt) and
+        //     the platform (every page of the customer's history) are asked whether this
+        //     externalOrderId already exists - either one means «done», nothing is created.
+        //  3. A failure after the draft exists and before it is submitted deletes the draft, so
+        //     a retry never finds a second copy waiting; a failure after the submit is recorded
+        //     as sent, because by then the order IS on the platform.
+        private static readonly System.Threading.SemaphoreSlim OneAtATime = new(1, 1);
+
+        public static string SentFile => Path.Combine(AppContext.BaseDirectory, "sent_till_orders.txt");
+
+        public static HashSet<long> LoadSentRegister() => LoadSentRegister(SentFile);
+
+        public static HashSet<long> LoadSentRegister(string file)
+        {
+            var set = new HashSet<long>();
+            try
+            {
+                if (File.Exists(file))
+                    foreach (string line in File.ReadAllLines(file))
+                        if (long.TryParse(line.Split('\t')[0], out long id)) set.Add(id);
+            }
+            catch { }
+            return set;
+        }
+
+        public static void RememberSent(long ordmId, string token) => RememberSent(SentFile, ordmId, token);
+
+        public static void RememberSent(string file, long ordmId, string token)
+        {
+            try { File.AppendAllText(file, $"{ordmId}\t{token}\t{DateTime.Now:yyyy-MM-dd HH:mm}{Environment.NewLine}", new UTF8Encoding(false)); }
+            catch { }
+        }
+
+        public sealed class AlreadySentException : InvalidOperationException
+        {
+            public string Token { get; }
+            public AlreadySentException(long ordmId, string token)
+                : base($"Η παραγγελία #{ordmId} έχει ήδη σταλεί στο PointToOrder" +
+                       (token.Length > 0 ? $" ({token})" : "") + ". Δεν στέλνεται δεύτερη φορά.")
+            { Token = token; }
+        }
+
         public static async Task<SendResult> SendAsync(
             PointToOrderApiClient api, long customerUserId, string customerName, Plan plan, Action<string>? progress = null)
+        {
+            await OneAtATime.WaitAsync();
+            try
+            {
+                // Fence 2: the register first (free), then the platform itself.
+                progress?.Invoke("Έλεγχος ότι δεν έχει ήδη σταλεί...");
+                if (LoadSentRegister().Contains(plan.OrdmId))
+                    throw new AlreadySentException(plan.OrdmId, "");
+                var onPlatform = await LoadSentAsync(api, customerUserId);
+                if (onPlatform.TryGetValue(plan.ExternalId, out string? existing))
+                {
+                    RememberSent(plan.OrdmId, existing);
+                    throw new AlreadySentException(plan.OrdmId, existing);
+                }
+
+                var result = await SendCoreAsync(api, customerUserId, customerName, plan, progress);
+                RememberSent(plan.OrdmId, result.Token);
+                return result;
+            }
+            finally
+            {
+                OneAtATime.Release();
+            }
+        }
+
+        private static async Task<SendResult> SendCoreAsync(
+            PointToOrderApiClient api, long customerUserId, string customerName, Plan plan, Action<string>? progress)
         {
             string store = api.StoreId;
             progress?.Invoke("Δημιουργία παραγγελίας στο PointToOrder...");
@@ -196,37 +271,53 @@ namespace CatalogBridge
             if (c1 >= 300) throw new PointToOrderException($"Η δημιουργία απέτυχε ({c1}): {b1}");
             string uuid = JsonDocument.Parse(b1).RootElement.GetProperty("uuid").GetString()!;
 
-            foreach (var line in plan.PlatformLines)
+            bool submitted = false;
+            try
             {
-                progress?.Invoke($"Προσθήκη «{line.Label}»...");
-                var (c2, b2) = await api.ProbePutAsync($"/api/v1/stores/{store}/orders/{uuid}/orderItems", new Dictionary<string, object>
+                foreach (var line in plan.PlatformLines)
                 {
-                    ["offerId"] = line.OfferId, ["quantity"] = line.Quantity,
-                    ["storeId"] = long.Parse(store), ["uuid"] = Guid.NewGuid().ToString(),
+                    progress?.Invoke($"Προσθήκη «{line.Label}»...");
+                    var (c2, b2) = await api.ProbePutAsync($"/api/v1/stores/{store}/orders/{uuid}/orderItems", new Dictionary<string, object>
+                    {
+                        ["offerId"] = line.OfferId, ["quantity"] = line.Quantity,
+                        ["storeId"] = long.Parse(store), ["uuid"] = Guid.NewGuid().ToString(),
+                    });
+                    if (c2 >= 300) throw new PointToOrderException($"Η προσθήκη «{line.Label}» απέτυχε ({c2}): {b2}");
+                }
+
+                progress?.Invoke("Σύνδεση με τον πελάτη...");
+                var (c3, b3) = await api.ProbePutAsync($"/api/v1/stores/{store}/orders/{uuid}", new Dictionary<string, object>
+                {
+                    ["customerUserId"] = customerUserId, ["customerName"] = customerName,
+                    ["externalOrderId"] = plan.ExternalId, ["deliveryMethod"] = "NO_LOCATION",
+                    ["comment"] = $"{EfomTriggerGuard.SentOrderTag}{plan.OrdmId}] Αγορά στο κατάστημα {plan.When:dd/MM/yyyy HH:mm}: " +
+                                  string.Join(", ", plan.Lines.Select(l => $"{l.Name} ×{l.Qty:0.##} {l.Total:0.00}€")),
                 });
-                if (c2 >= 300) throw new PointToOrderException($"Η προσθήκη «{line.Label}» απέτυχε ({c2}): {b2}. Η παραγγελία {uuid} έμεινε πρόχειρη στο PointToOrder.");
+                if (c3 >= 300) throw new PointToOrderException($"Η σύνδεση με τον πελάτη απέτυχε ({c3}): {b3}");
+
+                progress?.Invoke("Υποβολή...");
+                var (c4, b4) = await api.ProbePutAsync($"/api/v2/user/stores/{store}/orders/{uuid}", new Dictionary<string, object>
+                {
+                    // status ONLY: adding paymentStatus to this call answers 500 (seen 22/09); the
+                    // platform ignores paymentStatus on the public update as well, so the comment
+                    // is what says «paid at the shop».
+                    ["status"] = "SUBMITTED",
+                    ["keysToUpdate"] = new[] { "status" },
+                });
+                if (c4 >= 300) throw new PointToOrderException($"Η υποβολή απέτυχε ({c4}): {b4}");
+                submitted = true;
             }
-
-            progress?.Invoke("Σύνδεση με τον πελάτη...");
-            var (c3, b3) = await api.ProbePutAsync($"/api/v1/stores/{store}/orders/{uuid}", new Dictionary<string, object>
+            catch (Exception ex) when (!submitted)
             {
-                ["customerUserId"] = customerUserId, ["customerName"] = customerName,
-                ["externalOrderId"] = plan.ExternalId, ["deliveryMethod"] = "NO_LOCATION",
-                ["comment"] = $"{EfomTriggerGuard.SentOrderTag}{plan.OrdmId}] Αγορά στο κατάστημα {plan.When:dd/MM/yyyy HH:mm}: " +
-                              string.Join(", ", plan.Lines.Select(l => $"{l.Name} ×{l.Qty:0.##} {l.Total:0.00}€")),
-            });
-            if (c3 >= 300) throw new PointToOrderException($"Η σύνδεση με τον πελάτη απέτυχε ({c3}): {b3}. Η παραγγελία {uuid} έμεινε πρόχειρη στο PointToOrder.");
-
-            progress?.Invoke("Υποβολή...");
-            var (c4, b4) = await api.ProbePutAsync($"/api/v2/user/stores/{store}/orders/{uuid}", new Dictionary<string, object>
-            {
-                // status ONLY: adding paymentStatus to this call answers 500 (seen 22/09); the
-                // platform ignores paymentStatus on the public update as well, so the comment
-                // is what says «paid at the shop».
-                ["status"] = "SUBMITTED",
-                ["keysToUpdate"] = new[] { "status" },
-            });
-            if (c4 >= 300) throw new PointToOrderException($"Η υποβολή απέτυχε ({c4}): {b4}. Η παραγγελία {uuid} έμεινε πρόχειρη στο PointToOrder.");
+                // Fence 3: never leave a draft behind for a retry to double.
+                progress?.Invoke("Καθαρισμός πρόχειρης παραγγελίας...");
+                int cd;
+                try { (cd, _) = await api.ProbeDeleteAsync($"/api/v1/stores/{store}/orders/{uuid}"); }
+                catch { cd = -1; }
+                throw new PointToOrderException(ex.Message + (cd is >= 200 and < 300
+                    ? " Η πρόχειρη παραγγελία διαγράφηκε — τίποτα δεν έμεινε στο PointToOrder."
+                    : $" ΠΡΟΣΟΧΗ: η πρόχειρη παραγγελία {uuid} δεν διαγράφηκε ({cd}) — σβήστε την από το PointToOrder."));
+            }
 
             var (_, back) = await api.ProbeGetAsync($"/api/v1/stores/{store}/orders/{uuid}?locale=el&simplified=false");
             using var doc = JsonDocument.Parse(back);
@@ -234,28 +325,56 @@ namespace CatalogBridge
             string status = doc.RootElement.TryGetProperty("status", out var st) ? (st.GetString() ?? "") : "";
             decimal total = doc.RootElement.TryGetProperty("totalDiscountedPrice", out var tp) && tp.ValueKind == JsonValueKind.Number ? tp.GetDecimal() : -1;
             if (total != plan.Total)
+            {
+                RememberSent(plan.OrdmId, token);   // it IS on the platform - never send it again
                 throw new PointToOrderException($"Στάλθηκε ({token}) αλλά το σύνολο στο PointToOrder είναι {total:0.00} αντί για {plan.Total:0.00} — ελέγξτε το.");
+            }
             return new SendResult(uuid, token, status);
         }
 
-        // The customer's PointToOrder orders that came from the till: externalOrderId → token.
+        // The customer's PointToOrder orders that came from the till: externalOrderId → token,
+        // over EVERY page of their history (a long history must not hide an earlier send).
         public static async Task<Dictionary<string, string>> LoadSentAsync(PointToOrderApiClient api, long customerUserId)
         {
             var sent = new Dictionary<string, string>();
-            var (st, body) = await api.ProbePostAsync(
-                $"/api/v1/stores/{api.StoreId}/customers/orders?page=0&size=200",
-                new Dictionary<string, object> { ["customerId"] = customerUserId });
-            if (st >= 300) return sent;
-            using var doc = JsonDocument.Parse(body);
-            if (!doc.RootElement.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array) return sent;
-            foreach (var o in content.EnumerateArray())
+            for (int page = 0; page < 100; page++)
             {
-                string ext = o.TryGetProperty("externalOrderId", out var e) && e.ValueKind == JsonValueKind.String ? (e.GetString() ?? "") : "";
-                string status = o.TryGetProperty("status", out var s) ? (s.GetString() ?? "") : "";
-                if (ext.StartsWith("OREXSYS-", StringComparison.Ordinal) && status != "CANCELLED" && status != "DELETED")
-                    sent[ext] = o.TryGetProperty("orderToken", out var t) ? (t.GetString() ?? "") : "";
+                var (st, body) = await api.ProbePostAsync(
+                    $"/api/v1/stores/{api.StoreId}/customers/orders?page={page}&size=100",
+                    new Dictionary<string, object> { ["customerId"] = customerUserId });
+                if (st >= 300) throw new PointToOrderException($"Δεν διαβάστηκε το ιστορικό του πελάτη στο PointToOrder ({st}): {body}");
+                using var doc = JsonDocument.Parse(body);
+                if (!doc.RootElement.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array) break;
+                foreach (var o in content.EnumerateArray())
+                    if (IsSentTillOrder(o, out string ext, out string token)) sent[ext] = token;
+                bool last = doc.RootElement.TryGetProperty("last", out var l) && l.ValueKind == JsonValueKind.True;
+                if (last || content.GetArrayLength() == 0) break;
             }
             return sent;
+        }
+
+        // An order in the platform history counts as «this till order, already there» when it
+        // carries our tag and is not cancelled/deleted. The tag is read from the COMMENT
+        // («[OREXSYS#<ORDMID>] ...»): the platform overwrites externalOrderId with the order token
+        // at submit (seen live 22/09 - N3-38 was a duplicate of #5 because of it); only an
+        // unsubmitted draft still shows externalOrderId = OREXSYS-<id>, so that is the fallback.
+        public static bool IsSentTillOrder(JsonElement o, out string externalId, out string token)
+        {
+            string comment = o.TryGetProperty("comment", out var c) && c.ValueKind == JsonValueKind.String ? (c.GetString() ?? "") : "";
+            externalId = TagToExternalId(comment)
+                ?? (o.TryGetProperty("externalOrderId", out var e) && e.ValueKind == JsonValueKind.String ? (e.GetString() ?? "") : "");
+            token = o.TryGetProperty("orderToken", out var t) && t.ValueKind == JsonValueKind.String ? (t.GetString() ?? "") : "";
+            string status = o.TryGetProperty("status", out var s) && s.ValueKind == JsonValueKind.String ? (s.GetString() ?? "") : "";
+            return externalId.StartsWith("OREXSYS-", StringComparison.Ordinal) && status != "CANCELLED" && status != "DELETED";
+        }
+
+        // «[OREXSYS#5] Αγορά...» → "OREXSYS-5"; anything else → null.
+        public static string? TagToExternalId(string comment)
+        {
+            int i = comment.IndexOf(EfomTriggerGuard.SentOrderTag, StringComparison.Ordinal);
+            if (i < 0) return null;
+            int start = i + EfomTriggerGuard.SentOrderTag.Length, end = comment.IndexOf(']', start);
+            return end > start && long.TryParse(comment[start..end], out long id) ? Plan.ExternalIdFor(id) : null;
         }
     }
 }

@@ -46,6 +46,18 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   100,00 in his history; the connector brought it back as EFOM 8 and the loop guard left it at
   STATUS -1 — no till order, no customer. Also found: the admin submit call answers 500 when
   `paymentStatus` is sent with it — status only now.
+- **A till order goes to PointToOrder ONCE** (owner, 22/09). Found while closing this: the
+  platform overwrites `externalOrderId` with the order token at submit, so the «already there»
+  check never matched — that is how #5 ended up as NN-3K *and* 5H-KZ. The key is now the comment
+  tag «[OREXSYS#<ORDMID>]» (the same one the loop guard reads), which the platform keeps.
+  `TillOrderSender.SendAsync` now owns three fences shared by the button and the automatic
+  run: one send at a time in the process; a re-check of the register (`sent_till_orders.txt`,
+  now written by the button too) and of EVERY page of the customer's history right before
+  anything is created (`AlreadySentException`, shown as «έχει ήδη σταλεί (token)»); and a
+  failure after the draft exists but before submit DELETES the draft, so a retry never doubles
+  it — while a failure after submit (e.g. the total check) is recorded as sent. Verified on
+  1110: refused by the platform check, then by the register; a bogus line left no draft behind.
+  The duplicate my check created before the fix (N3-38) is cancelled.
 - **Automatic: «Παραγγελίες ταμείου → PointToOrder» switch on the home page.** Owner request
   22/09. `TillOrderSyncService` runs every 2 minutes while the app is open: every closed
   (STS 4), not cancelled till order — not one that came from the platform — placed since the

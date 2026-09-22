@@ -17,8 +17,10 @@ namespace CatalogBridge
     // platform — placed since the switch was turned on, for a customer whose e-mail has a
     // PointToOrder account, and only when it can be identical (TillOrderSender.CheckIdentical).
     // Orders already on the platform (externalOrderId OREXSYS-<ORDMID>) are never sent twice;
-    // the ones sent are also remembered next to the exe (sent_till_orders.txt) so a quiet
-    // cycle costs one query and no API call. Refused orders are logged once per session with
+    // the ones sent are remembered next to the exe (TillOrderSender.SentFile, shared with the
+    // manual button) so a quiet cycle costs one query and no API call; TillOrderSender.SendAsync
+    // re-checks both the register and the platform right before every send and sends one
+    // at a time. Refused orders are logged once per session with
     // their reason. Nothing runs while the loop guard is not in the trigger.
     public class TillOrderSyncService
     {
@@ -55,27 +57,6 @@ namespace CatalogBridge
         }
 
         public Task RunNowAsync() => RunOnceAsync();
-
-        private static string SentFile => Path.Combine(AppContext.BaseDirectory, "sent_till_orders.txt");
-
-        private static HashSet<long> LoadSentFile()
-        {
-            var set = new HashSet<long>();
-            try
-            {
-                if (File.Exists(SentFile))
-                    foreach (string line in File.ReadAllLines(SentFile))
-                        if (long.TryParse(line.Split('\t')[0], out long id)) set.Add(id);
-            }
-            catch { }
-            return set;
-        }
-
-        private static void RememberSent(long ordmId, string token)
-        {
-            try { File.AppendAllText(SentFile, $"{ordmId}\t{token}\t{DateTime.Now:yyyy-MM-dd HH:mm}{Environment.NewLine}", new UTF8Encoding(false)); }
-            catch { }
-        }
 
         private sealed record Candidate(long OrdmId, long CustId, string CustName, string Email);
 
@@ -120,7 +101,7 @@ namespace CatalogBridge
                 }
 
                 var candidates = await LoadCandidatesAsync(settings, settings.TillOrderSyncSince);
-                var done = LoadSentFile();
+                var done = TillOrderSender.LoadSentRegister();
                 var todo = candidates.Where(c => !done.Contains(c.OrdmId) && !sentThisSession.Contains(c.OrdmId) && !refused.ContainsKey(c.OrdmId)).ToList();
                 if (todo.Count == 0)
                 {
@@ -154,7 +135,7 @@ namespace CatalogBridge
                         string externalId = TillOrderSender.Plan.ExternalIdFor(c.OrdmId);
                         if (onPlatform.TryGetValue(externalId, out string? token0))
                         {
-                            RememberSent(c.OrdmId, token0);   // sent by hand earlier
+                            TillOrderSender.RememberSent(c.OrdmId, token0);   // sent by hand earlier
                             sentThisSession.Add(c.OrdmId);
                             continue;
                         }
@@ -165,11 +146,17 @@ namespace CatalogBridge
 
                         var plan = new TillOrderSender.Plan(head.OrdmId, head.When, head.Total, lines, platformLines, externalId);
                         var result = await TillOrderSender.SendAsync(api, customerId, c.CustName, plan);
-                        RememberSent(c.OrdmId, result.Token);
+                        // (SendAsync already recorded it)
                         sentThisSession.Add(c.OrdmId);
                         onPlatform[externalId] = result.Token;
                         sent++;
                         CustomerDirectory.Log($"auto: till order {c.OrdmId} ({head.Total:0.00}) → {result.Token} {result.Status} for CUSTID {c.CustId}");
+                    }
+                    catch (TillOrderSender.AlreadySentException ex)
+                    {
+                        // Sent by hand between our check and our send - fine, it is there once.
+                        CustomerDirectory.Log($"auto: till order {c.OrdmId} already sent - {ex.Message}");
+                        sentThisSession.Add(c.OrdmId);
                     }
                     catch (Exception ex)
                     {

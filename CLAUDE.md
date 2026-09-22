@@ -193,3 +193,8 @@ git-ignored and excluded from publish. The sidebar shows the version.
   loop guard (`OREXSYS-LOOP-GUARD-V1`, edits D1/D2: tagged order → STATUS -1 on insert and on accept)
   because the first live send came back as till order #6 + a nameless customer. `ReadState.Patched`
   now requires e-mail-only AND loop guard; older = `PatchedOlder`, completed at next Run.
+- **Once only (22/09).** PointToOrder overwrites `externalOrderId` with the token at submit; the
+  comment tag «[OREXSYS#<id>]» is the only key that survives (`TillOrderSender.IsSentTillOrder`
+  / `TagToExternalId`). `SendAsync` = single-flight + register (`SentFile`, shared by button and
+  service) + full-history re-check + draft DELETE on failure before submit. Keep all three inside
+  `SendAsync`, not in callers.

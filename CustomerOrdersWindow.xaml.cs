@@ -127,6 +127,12 @@ namespace CatalogBridge
                 CustomerDirectory.Log($"PointToOrder: till order {head.OrdmId} ({head.Total:0.00}) sent for CUSTID {customer.CustId} → {result.Token} {result.Status}");
                 await LoadAsync($"✓ Η παραγγελία #{head.OrdmId} στάλθηκε στο PointToOrder ως {result.Token} ({result.Status}).");
             }
+            catch (TillOrderSender.AlreadySentException ex)
+            {
+                // Someone (the automatic run, another PC) got there first - show the truth, do not resend.
+                CustomerDirectory.Log($"PointToOrder: till order {o.OrdmId} NOT resent - {ex.Message}");
+                await LoadAsync(ex.Message);
+            }
             catch (Exception ex)
             {
                 CustomerDirectory.Log($"PointToOrder: till order {o.OrdmId} FAILED - {ex.Message}");
