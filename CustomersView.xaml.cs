@@ -103,6 +103,23 @@ namespace CatalogBridge
             CardButton.IsEnabled = CanGetCard(row);
         }
 
+        // Double-click: the customer's orders. Only an Orexsys customer has orders here - an
+        // account that exists only on PointToOrder has no CUST row yet (give it a card first).
+        private void CustomersGrid_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            var row = Selected;
+            if (row == null) return;
+            if (row.Orexsys == null)
+            {
+                ShowStatus($"Ο «{row.Name}» υπάρχει μόνο στο PointToOrder — δεν έχει ακόμα πελάτη (και παραγγελίες) στο Orexsys. " +
+                           "Δώστε του κάρτα με το κουμπί «Κάρτα...».", Warn);
+                return;
+            }
+            var settings = TryLoadSettings(m => ShowStatus(m, Warn));
+            if (settings == null) return;
+            new CustomerOrdersWindow(settings, row.Orexsys) { Owner = Window.GetWindow(this) }.ShowDialog();
+        }
+
         // ---- new customer ------------------------------------------------------------------
 
         private async void NewButton_Click(object sender, RoutedEventArgs e)

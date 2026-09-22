@@ -34,6 +34,12 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   `min`/`max`/`parentOfferId`, each choice an offer inside it, all made visible with the parent
   (`PointToOrderApiClient.CreateOptionGroupAsync`). A product already online is left alone even
   if sizes are added later. Verified end to end on demo 1110, created and deleted again.
+- **«Πελάτες» → double-click: the customer's orders.** Every real order of the customer in
+  Orexsys — online and at the till (customer link = CARDCUSTID when set, else CUSTID, as every
+  Orexsys reader does; cancelled = CANCELED or TOTAL 0, counted apart and left out of the
+  totals) — with date, number, kind (online / take away / table), state, main items and amount,
+  plus the count, the total and the average per order. Read-only. An account that exists only
+  on PointToOrder has no Orexsys orders yet — the message points to «Κάρτα...».
 - **«Πελάτες» → «Κάρτα...»: a card for a customer that has none.** For an Orexsys customer
   without a card it fills `CUST.CARDNO` (refused if the card is on another customer or the
   customer already has one — exactly one row changes or nothing). For an account that exists

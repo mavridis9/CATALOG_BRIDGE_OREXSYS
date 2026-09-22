@@ -269,6 +269,60 @@ namespace CatalogBridge
 
         public static string InviteKey(string email) => Key(email);
 
+        // ---- the customer's orders (double-click) --------------------------------------------
+
+        public sealed record CustomerOrder(long OrdmId, DateTime When, string Kind, string Status, decimal Total, string Items);
+
+        public sealed class CustomerOrders
+        {
+            public List<CustomerOrder> Orders { get; } = new();
+            public int Cancelled { get; set; }
+            public int Count => Orders.Count;
+            public decimal Total => Orders.Sum(o => o.Total);
+            public decimal Average => Count == 0 ? 0m : Math.Round(Total / Count, 2);
+            public DateTime? First => Orders.Count == 0 ? null : Orders.Min(o => o.When);
+            public DateTime? Last => Orders.Count == 0 ? null : Orders.Max(o => o.When);
+        }
+
+        // Every real order of the customer, online and at the till. The customer link is the
+        // one every Orexsys reader uses (CARDCUSTID when set, else CUSTID — a till sale on a
+        // card carries the person in CARDCUSTID with CUSTID 0); cancelled = CANCELED = 1 or
+        // TOTAL = 0, counted separately and left out of the totals. Items = the main lines
+        // (ORDDID = PARENTID; extras hang off them). Read-only.
+        public static Task<CustomerOrders> LoadOrdersAsync(Settings settings, long custId) => Task.Run(() =>
+        {
+            var result = new CustomerOrders();
+            using var connection = new FbConnection(settings.ToConnectionString());
+            connection.Open();
+            const string sql = @"
+                SELECT m.ORDMID, m.ODATE, m.OTIME, m.OTYPE, m.STS, m.CANCELED, m.TOTAL,
+                       (SELECT LIST(TRIM(d.NAME) || IIF(d.QTY <> 1, ' ×' || CAST(d.QTY AS INTEGER), ''), ', ')
+                          FROM ORDD d WHERE d.ORDMID = m.ORDMID AND d.ORDDID = d.PARENTID AND d.QTY > 0) AS ITEMS
+                FROM ORDM m
+                WHERE (CASE WHEN COALESCE(m.CARDCUSTID, 0) <> 0 THEN m.CARDCUSTID ELSE m.CUSTID END) = @id
+                ORDER BY m.ODATE DESC, m.OTIME DESC";
+            using var command = new FbCommand(sql, connection);
+            command.Parameters.Add("@id", FbDbType.BigInt).Value = custId;
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                decimal total = reader["TOTAL"] == DBNull.Value ? 0m : Convert.ToDecimal(reader["TOTAL"]);
+                bool cancelled = (reader["CANCELED"] != DBNull.Value && Convert.ToInt32(reader["CANCELED"]) == 1) || total == 0m;
+                if (cancelled) { result.Cancelled++; continue; }
+
+                var date = reader["ODATE"] == DBNull.Value ? DateTime.MinValue : Convert.ToDateTime(reader["ODATE"]);
+                var time = reader["OTIME"] is TimeSpan t ? t : TimeSpan.Zero;   // Firebird TIME → TimeSpan
+                int otype = reader["OTYPE"] == DBNull.Value ? 0 : Convert.ToInt32(reader["OTYPE"]);
+                int sts = reader["STS"] == DBNull.Value ? 0 : Convert.ToInt32(reader["STS"]);
+                result.Orders.Add(new CustomerOrder(
+                    Convert.ToInt64(reader["ORDMID"]), date + time,
+                    otype switch { 2 => "Online / delivery", 3 => "Take away", 1 => "Τραπέζι", _ => $"Τύπος {otype}" },
+                    sts == 4 ? "Κλειστή" : "Ανοιχτή",
+                    total, Str(reader["ITEMS"])));
+            }
+            return result;
+        });
+
         // ---- «Κάρτα...»: a card for a customer that has none --------------------------------
 
         public static string? ValidateCard(string card)

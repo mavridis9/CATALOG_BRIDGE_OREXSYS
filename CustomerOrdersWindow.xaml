@@ -1,0 +1,67 @@
+<Window x:Class="CatalogBridge.CustomerOrdersWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Παραγγελίες πελάτη" Height="560" Width="820"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource AppBg}" FontFamily="Segoe UI">
+
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock x:Name="TitleText" FontSize="18" FontWeight="Bold" Foreground="{StaticResource InkBrush}"/>
+            <TextBlock x:Name="SubText" FontSize="12.5" Foreground="{StaticResource MutedBrush}" Margin="0,3,0,0"/>
+        </StackPanel>
+
+        <!-- The three numbers -->
+        <UniformGrid Grid.Row="1" Columns="3" Margin="0,0,0,12">
+            <Border Style="{StaticResource Card}" Padding="14" Margin="0,0,8,0">
+                <StackPanel>
+                    <TextBlock Text="Παραγγελίες" FontSize="12.5" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock x:Name="CountText" Text="—" FontSize="26" FontWeight="Bold" Foreground="{StaticResource InkBrush}"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Padding="14" Margin="4,0,4,0">
+                <StackPanel>
+                    <TextBlock Text="Σύνολο" FontSize="12.5" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock x:Name="TotalText" Text="—" FontSize="26" FontWeight="Bold" Foreground="{StaticResource InkBrush}"/>
+                </StackPanel>
+            </Border>
+            <Border Style="{StaticResource Card}" Padding="14" Margin="8,0,0,0">
+                <StackPanel>
+                    <TextBlock Text="Μέσος όρος ανά παραγγελία" FontSize="12.5" Foreground="{StaticResource MutedBrush}"/>
+                    <TextBlock x:Name="AverageText" Text="—" FontSize="26" FontWeight="Bold" Foreground="{StaticResource InkBrush}"/>
+                </StackPanel>
+            </Border>
+        </UniformGrid>
+
+        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="8">
+            <DataGrid x:Name="OrdersGrid" Style="{StaticResource ModernGrid}" SelectionMode="Single">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Ημερομηνία" Binding="{Binding When, StringFormat=dd/MM/yyyy HH:mm}" Width="135"/>
+                    <DataGridTextColumn Header="Αρ." Binding="{Binding OrdmId}" Width="70"/>
+                    <DataGridTextColumn Header="Είδος" Binding="{Binding Kind}" Width="120"/>
+                    <DataGridTextColumn Header="Κατάσταση" Binding="{Binding Status}" Width="85"/>
+                    <DataGridTextColumn Header="Προϊόντα" Binding="{Binding Items}" Width="*"/>
+                    <DataGridTextColumn Header="Ποσό" Binding="{Binding Total, StringFormat=0.00}" Width="80">
+                        <DataGridTextColumn.ElementStyle>
+                            <Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+                        </DataGridTextColumn.ElementStyle>
+                    </DataGridTextColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <Grid Grid.Row="3" Margin="0,12,0,0">
+            <TextBlock x:Name="StatusText" VerticalAlignment="Center" FontSize="12.5" TextWrapping="Wrap"
+                       Margin="0,0,120,0" Foreground="{StaticResource MutedBrush}"/>
+            <Button Content="Κλείσιμο" Style="{StaticResource SecondaryButton}" MinWidth="100"
+                    HorizontalAlignment="Right" IsCancel="True" Click="CloseButton_Click"/>
+        </Grid>
+    </Grid>
+</Window>
