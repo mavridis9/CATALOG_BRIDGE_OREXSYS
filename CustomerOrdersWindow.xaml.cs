@@ -112,14 +112,16 @@ namespace CatalogBridge
         private void UpdateButton()
         {
             var o = Selected;
-            SendButton.IsEnabled = o != null && !o.FromPlatform && !o.CancelledInOrexsys && o.PlatformText.Length == 0 && platformCustomerId != null;
-            CancelOrderButton.IsEnabled = o != null && CancelDecisionFor(o) != CancelSide.None;
+            bool licensed = License.CanWrite(Module.Orders);   // expired = this window is read-only
+            SendButton.IsEnabled = licensed && o != null && !o.FromPlatform && !o.CancelledInOrexsys && o.PlatformText.Length == 0 && platformCustomerId != null;
+            CancelOrderButton.IsEnabled = licensed && o != null && CancelDecisionFor(o) != CancelSide.None;
         }
 
         private async void SendButton_Click(object sender, RoutedEventArgs e)
         {
             var o = Selected;
             if (o == null || platformCustomerId is not long customerId) return;
+            if (License.Blocked(Module.Orders, out string why)) { StatusText.Text = why; return; }
 
             SendButton.IsEnabled = false;
             try
@@ -179,6 +181,7 @@ namespace CatalogBridge
         {
             var o = Selected;
             if (o == null) return;
+            if (License.Blocked(Module.Orders, out string why)) { StatusText.Text = why; return; }
 
             string? token = PlatformTokenFor(o);
             TillOrderSender.PlatformOrderSummary? plat = token != null && byToken.TryGetValue(token, out var p) ? p : null;

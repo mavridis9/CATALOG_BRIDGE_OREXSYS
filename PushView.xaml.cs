@@ -167,6 +167,7 @@ namespace CatalogBridge
         private async void PushButton_Click(object sender, RoutedEventArgs e)
         {
             if (platform == null) return;
+            if (License.Blocked(Module.Catalogue, out string why)) { ShowStatus(why, Bad); return; }
 
             var selectedItems = ProductsGrid.SelectedItems.OfType<PushItem>()
                 .Where(i => i.Units.Count > 0).ToList();

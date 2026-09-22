@@ -124,6 +124,7 @@ namespace CatalogBridge
 
         private async void NewButton_Click(object sender, RoutedEventArgs e)
         {
+            if (License.Blocked(Module.Orders, out string why)) { ShowStatus(why, Bad); return; }
             var settings = TryLoadSettings(m => ShowStatus(m, Warn));
             if (settings == null) return;
 
@@ -187,6 +188,7 @@ namespace CatalogBridge
         {
             var row = Selected;
             if (row?.Orexsys == null || row.Link != CustomerLink.OrexsysOnly) return;
+            if (License.Blocked(Module.Orders, out string why)) { ShowStatus(why, Bad); return; }
             var settings = TryLoadSettings(m => ShowStatus(m, Warn));
             if (settings == null) return;
 
@@ -228,6 +230,7 @@ namespace CatalogBridge
         {
             var row = Selected;
             if (!CanGetCard(row)) return;
+            if (License.Blocked(Module.Orders, out string why)) { ShowStatus(why, Bad); return; }
             var settings = TryLoadSettings(m => ShowStatus(m, Warn));
             if (settings == null) return;
 
@@ -284,6 +287,7 @@ namespace CatalogBridge
         {
             var row = Selected;
             if (row?.Platform == null || row.Platform.Registered) return;
+            if (License.Blocked(Module.Orders, out string why)) { ShowStatus(why, Bad); return; }
             var settings = TryLoadSettings(m => ShowStatus(m, Warn));
             if (settings == null) return;
 

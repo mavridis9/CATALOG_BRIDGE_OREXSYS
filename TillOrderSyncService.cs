@@ -42,7 +42,8 @@ namespace CatalogBridge
 
         public void Apply(Settings settings)
         {
-            bool shouldRun = settings.TillOrderSyncEnabled && settings.IsDatabaseConfigured && settings.IsApiConfigured;
+            bool licensed = License.CanWrite(Module.Orders);   // §4.1: expired = the service stops
+            bool shouldRun = settings.TillOrderSyncEnabled && licensed && settings.IsDatabaseConfigured && settings.IsApiConfigured;
             if (shouldRun && !timer.IsEnabled)
             {
                 timer.Start();
@@ -52,7 +53,8 @@ namespace CatalogBridge
             else if (!shouldRun && timer.IsEnabled)
             {
                 timer.Stop();
-                StatusChanged?.Invoke(settings.TillOrderSyncEnabled ? "Παραγγελίες ταμείου: ανενεργό (ελλιπείς ρυθμίσεις)" : "");
+                StatusChanged?.Invoke(!settings.TillOrderSyncEnabled ? ""
+                    : !licensed ? "Παραγγελίες ταμείου: ΣΤΑΜΑΤΗΜΕΝΟ — " + License.Summary() : "Παραγγελίες ταμείου: ανενεργό (ελλιπείς ρυθμίσεις)");
             }
         }
 
@@ -90,7 +92,7 @@ namespace CatalogBridge
             try
             {
                 Settings settings = Settings.Load();
-                if (!settings.TillOrderSyncEnabled) return;
+                if (!settings.TillOrderSyncEnabled || !License.CanWrite(Module.Orders)) return;
 
                 var state = await Task.Run(() => EfomTriggerGuard.ReadState(settings));
                 if (state != EfomTriggerGuard.State.Patched)

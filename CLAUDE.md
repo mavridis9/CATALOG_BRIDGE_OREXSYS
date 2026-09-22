@@ -201,6 +201,18 @@ git-ignored and excluded from publish. The sidebar shows the version.
   / `TagToExternalId`). `SendAsync` = single-flight + register (`SentFile`, shared by button and
   service) + full-history re-check + draft DELETE on failure before submit. Keep all three inside
   `SendAsync`, not in callers.
+- **Licensing, phase 1 (22/09).** Two modules — `catalogue` (§1-A: sync, diff, EFIC, sizes, stock,
+  reset) and `orders` (B + everything riding on it: trigger patch, Πελάτες, till orders → history,
+  cancel). Design: `docs/LICENSING_AND_UPDATES.md`. Token = signed JSON (ECDSA P-256, public key
+  embedded in `License.PublicKeys`, private key OUTSIDE the repo: `D:\Claude\CatalogBridge.keys\` on
+  the owner's PC, issued with `tools/LicenceSigner`), bound to `MachineFingerprint` (MachineGuid +
+  system-volume serial → `XXXX-XXXX-XXXX-XXXX-XXXX`), stored plain in `licence.dat` next to the exe,
+  verified offline at every start. Rule: every write path calls `License.Blocked(module, out why)`
+  first (Συγχρονισμός, push, EFIC repair/delete/map, reset, stock sync, trigger apply, till-order
+  switch + service, customer create/send/card/invite, order send/cancel); expired = read-only +
+  services stop; module absent = its nav hidden; **licence state never removes anything** (trigger
+  patch stays for ΔΙΑΧΕΙΡΙΣΗ). No server yet: renewal = a new token pasted in Ρυθμίσεις → «Άδεια
+  χρήσης». `LicenseToken.cs` is pure and shared by app, tool and tests - never copy it.
 - **Cancel in both platforms with one click (22/09).** «Ακύρωση παραγγελίας» in the customer's
   orders window: `OrderCancel.Decide(cancelledInOrexsys, platformStatus)` → None / OrexsysOnly /
   PlatformOnly / Both — only the side(s) still active are touched, so a second press does nothing.

@@ -23,3 +23,7 @@ deploy/
 .vs/
 *.user
 *.suo
+
+# Licensing: the signing key never enters the repo; the token is per machine
+*.key
+licence.dat

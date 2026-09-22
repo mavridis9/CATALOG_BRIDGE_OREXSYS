@@ -16,7 +16,7 @@
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
 
     <!-- SDK-style projects compile every *.cs under the folder; keep tests/docs/staging out. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;docs/**;scripts/**;deploy/**;publish/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;tools/**;docs/**;scripts/**;deploy/**;publish/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

@@ -151,6 +151,7 @@ namespace CatalogBridge
 
         private async void RepairButton_Click(object sender, RoutedEventArgs e)
         {
+            if (License.Blocked(Module.Catalogue, out string why)) { ShowStatus(why, Bad); return; }
             var selected = EficGrid.SelectedItems.OfType<EficRow>().ToList();
             if (selected.Count != 1)
             {
@@ -200,6 +201,7 @@ namespace CatalogBridge
 
         private async void DeleteButton_Click(object sender, RoutedEventArgs e)
         {
+            if (License.Blocked(Module.Catalogue, out string why)) { ShowStatus(why, Bad); return; }
             var selected = EficGrid.SelectedItems.OfType<EficRow>().ToList();
             if (selected.Count == 0)
             {
@@ -259,6 +261,7 @@ namespace CatalogBridge
 
         private async void MapButton_Click(object sender, RoutedEventArgs e)
         {
+            if (License.Blocked(Module.Catalogue, out string why)) { ShowStatus(why, Bad); return; }
             if (UnmappedGrid.SelectedItem is not CatalogOffer offer)
             {
                 ShowStatus("Επιλέξτε πρώτα ένα προϊόν PointToOrder από την κάτω λίστα.", Warn);

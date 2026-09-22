@@ -95,24 +95,39 @@ namespace CatalogBridge
                 settings = new Settings();
             }
 
+            // Licence (docs/LICENSING_AND_UPDATES.md §4.1): a module that is not in the token
+            // has its screens hidden; an expired one keeps its screens (read-only - each write
+            // path refuses by itself) and loses its automatic services. Never removes anything.
+            License.Load();
+            bool ordersKnown = License.StateOf(Module.Orders) != LicenseState.NotLicensed;
+            bool showCustomers = settings.ShowCustomers && ordersKnown;
+
             DashNav.Visibility = settings.ShowDashboard ? Visibility.Visible : Visibility.Collapsed;
             CompareNav.Visibility = settings.ShowCompare ? Visibility.Visible : Visibility.Collapsed;
             PushNav.Visibility = settings.ShowPush ? Visibility.Visible : Visibility.Collapsed;
             EficNav.Visibility = settings.ShowEfic ? Visibility.Visible : Visibility.Collapsed;
-            CustomersNav.Visibility = settings.ShowCustomers ? Visibility.Visible : Visibility.Collapsed;
+            CustomersNav.Visibility = showCustomers ? Visibility.Visible : Visibility.Collapsed;
 
             bool currentHidden =
                 (DashNav.IsChecked == true && !settings.ShowDashboard) ||
                 (CompareNav.IsChecked == true && !settings.ShowCompare) ||
                 (PushNav.IsChecked == true && !settings.ShowPush) ||
                 (EficNav.IsChecked == true && !settings.ShowEfic) ||
-                (CustomersNav.IsChecked == true && !settings.ShowCustomers);
+                (CustomersNav.IsChecked == true && !showCustomers);
             if (currentHidden) SyncNav.IsChecked = true;
 
             string database = System.IO.Path.GetFileName(settings.Database);
             StoreInfoText.Text = settings.IsApiConfigured
                 ? $"PointToOrder {settings.ApiStoreId}\n{database}"
                 : "Δεν έχει ρυθμιστεί ακόμα";
+            LicenceText.Text = License.Summary();
+            LicenceText.Foreground = License.Worst() switch
+            {
+                LicenseState.Licensed => (System.Windows.Media.Brush)FindResource("MutedBrush"),
+                LicenseState.Grace => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xB2, 0x6A, 0x00)),
+                _ => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xC4, 0x2B, 0x1C)),
+            };
+            sync.ShowLicence();
 
             stockSync.Apply(settings);
             tillSync.Apply(settings);
@@ -126,6 +141,9 @@ namespace CatalogBridge
         private void EnsureEmailCorrelation(Settings settings)
         {
             if (!settings.EmailOrderCorrelation || !settings.IsDatabaseConfigured) return;
+            // Without an «orders» licence the patch is neither re-applied nor removed: ΔΙΑΧΕΙΡΙΣΗ
+            // may depend on it at the same shop (§4.1, trigger ownership).
+            if (!License.CanWrite(Module.Orders)) return;
 
             string folder = System.IO.Path.Combine(AppContext.BaseDirectory, "backups");
             System.Threading.Tasks.Task.Run(() => EfomTriggerGuard.Run(settings, folder)).ContinueWith(t =>

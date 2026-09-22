@@ -158,6 +158,35 @@
                 <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5B6572" FontSize="12"
                            Text="Ξεχωριστά προϊόντα: κάθε μέγεθος γίνεται δικό του προϊόν στο PointToOrder («ΤΟΣΤ», «ΤΟΣΤ XL») και η παραγγελία φτάνει στο ταμείο με το μέγεθος. Ένα προϊόν με επιλογές: ένα προϊόν στη φθηνότερη τιμή με ομάδα «ΕΠΙΛΕΞΤΕ ΜΕΓΕΘΟΣ» και επιβάρυνση ανά μέγεθος — η τιμή φτάνει σωστά στο ταμείο, αλλά το μέγεθος μόνο ως κείμενο στις επιλογές της παραγγελίας, όχι στο πεδίο μεγέθους."/>
 
+                <TextBlock Text="Άδεια χρήσης" Style="{StaticResource SectionHeader}"/>
+                <TextBlock x:Name="LicenceStateText" TextWrapping="Wrap" Margin="0,0,0,6" FontSize="12.5"
+                           Text="Έλεγχος..."/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="170"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Αποτύπωμα υπολογιστή" VerticalAlignment="Center"
+                               ToolTip="Διαβάστε το στον τεχνικό: η άδεια εκδίδεται για αυτόν ακριβώς τον υπολογιστή."/>
+                    <TextBox   Grid.Row="0" Grid.Column="1" x:Name="FingerprintBox" Margin="0,4" IsReadOnly="True"
+                               FontFamily="Consolas" FontSize="14"/>
+                    <Button    Grid.Row="0" Grid.Column="2" Content="Αντιγραφή" Padding="10,3" Margin="8,4,0,4"
+                               Click="CopyFingerprintButton_Click"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Άδεια (κείμενο)" VerticalAlignment="Top" Margin="0,8,0,0"/>
+                    <TextBox   Grid.Row="1" Grid.Column="1" x:Name="LicenceBox" Margin="0,4" AcceptsReturn="True"
+                               TextWrapping="Wrap" MinHeight="64" MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                               FontFamily="Consolas" FontSize="11"/>
+                    <Button    Grid.Row="1" Grid.Column="2" Content="Ενεργοποίηση" Padding="10,3" Margin="8,4,0,4"
+                               VerticalAlignment="Top" Click="InstallLicenceButton_Click"/>
+                </Grid>
+                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5B6572" FontSize="12"
+                           Text="Η άδεια είναι ένα κείμενο που εκδίδεται για το αποτύπωμα αυτού του υπολογιστή και ορίζει τι περιλαμβάνει (Συγχρονισμός Καταλόγου, Αντιστοίχιση Παραγγελιών &amp; Πελατών) και έως πότε. Επικολλήστε το εδώ και πατήστε «Ενεργοποίηση». Χωρίς ενεργή άδεια το πρόγραμμα μόνο δείχνει — δεν συγχρονίζει, δεν στέλνει, δεν αλλάζει τίποτα· ό,τι έχει ήδη γίνει στο Orexsys και στο PointToOrder μένει ως έχει."/>
+
                 <TextBlock Text="Παραγγελίες PointToOrder" Style="{StaticResource SectionHeader}"/>
                 <CheckBox x:Name="EmailCorrelationCheck" Margin="0,2"
                           Content="Αντιστοίχιση παραγγελιών μόνο με το e-mail του πελάτη"

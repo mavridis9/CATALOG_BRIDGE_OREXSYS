@@ -27,6 +27,13 @@
                        HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
                        Margin="0,16,0,0" Text=""/>
 
+            <!-- Licence tripwire: red when expired / missing, amber in grace (License.Summary) -->
+            <Border x:Name="LicenceBanner" Visibility="Collapsed" CornerRadius="8" Padding="14,10" Margin="0,16,0,0"
+                    MinWidth="520" HorizontalAlignment="Center" Background="#FDECEA">
+                <TextBlock x:Name="LicenceBannerText" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                           Foreground="#C42B1C"/>
+            </Border>
+
             <!-- Till orders → PointToOrder, automatic (owner request 22/09/2026) -->
             <Border Style="{StaticResource Card}" Margin="0,22,0,0" MinWidth="520" Padding="16">
                 <StackPanel>

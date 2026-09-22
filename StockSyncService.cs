@@ -35,7 +35,10 @@ namespace CatalogBridge
         // Called at startup and whenever the Settings dialog closes.
         public void Apply(Settings settings)
         {
-            bool shouldRun = settings.StockSyncEnabled &&
+            // An expired / missing «catalogue» licence stops the service (§4.1); the timer is
+            // re-evaluated at every Apply, i.e. at start and after Ρυθμίσεις.
+            bool licensed = License.CanWrite(Module.Catalogue);
+            bool shouldRun = settings.StockSyncEnabled && licensed &&
                              settings.IsDatabaseConfigured && settings.IsApiConfigured;
 
             if (shouldRun && !timer.IsEnabled)
@@ -48,8 +51,8 @@ namespace CatalogBridge
             {
                 timer.Stop();
                 lastSent.Clear();
-                StatusChanged?.Invoke(settings.StockSyncEnabled
-                    ? "Απόθεμα: ανενεργό (ελλιπείς ρυθμίσεις)" : "");
+                StatusChanged?.Invoke(!settings.StockSyncEnabled ? ""
+                    : !licensed ? "Απόθεμα: ανενεργό (άδεια χρήσης)" : "Απόθεμα: ανενεργό (ελλιπείς ρυθμίσεις)");
             }
         }
 

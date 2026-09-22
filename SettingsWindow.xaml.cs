@@ -91,6 +91,7 @@ namespace CatalogBridge
             StockSyncCheck.IsChecked = settings.StockSyncEnabled;
             EmailCorrelationCheck.IsChecked = settings.EmailOrderCorrelation;
             Loaded += async (s, e) => await RefreshEmailStateAsync(settings);
+            ShowLicence();
 
             SizeModeCombo.ItemsSource = new List<SizeModeOption>
             {
@@ -161,6 +162,7 @@ namespace CatalogBridge
         // store and every EFIC code before anything is deleted.
         private void ResetButton_Click(object sender, RoutedEventArgs e)
         {
+            if (License.Blocked(Module.Catalogue, out string why)) { ShowStatus(why, Bad); return; }
             new ResetWindow(BuildFromForm()) { Owner = this }.ShowDialog();
         }
 
@@ -463,8 +465,15 @@ namespace CatalogBridge
             }
 
             // The e-mail correlation is applied now, not left to the next start, so the
-            // technician sees at once whether Orexsys accepted the change.
-            if (saved.EmailOrderCorrelation && saved.IsDatabaseConfigured)
+            // technician sees at once whether Orexsys accepted the change. It is the on-switch
+            // of the «orders» module: without that licence it is saved but NOT applied (and never
+            // removed - ΔΙΑΧΕΙΡΙΣΗ may rely on the same patch).
+            if (saved.EmailOrderCorrelation && saved.IsDatabaseConfigured && License.Blocked(Module.Orders, out string why))
+            {
+                MessageBox.Show("Οι ρυθμίσεις αποθηκεύτηκαν, αλλά η αντιστοίχιση με e-mail ΔΕΝ εφαρμόστηκε στο Orexsys:\n\n" + why,
+                    "Ρυθμίσεις", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            else if (saved.EmailOrderCorrelation && saved.IsDatabaseConfigured)
             {
                 SaveButton.IsEnabled = false;
                 ShowStatus("Εφαρμογή της αντιστοίχισης με e-mail στο Orexsys...", Normal);
@@ -546,6 +555,55 @@ namespace CatalogBridge
         }
 
         private void CancelButton_Click(object sender, RoutedEventArgs e) => Close();
+
+        // ---- «Άδεια χρήσης» (docs/LICENSING_AND_UPDATES.md, phase 1) ---------------------------
+
+        private void ShowLicence()
+        {
+            FingerprintBox.Text = License.Fingerprint;
+            var t = License.Current;
+            if (t == null)
+            {
+                LicenceStateText.Text = "Χωρίς άδεια χρήσης" + (License.Problem.Length > 0 ? " — " + License.Problem : "") +
+                                        " Το πρόγραμμα μόνο δείχνει μέχρι να ενεργοποιηθεί άδεια.";
+                LicenceStateText.Foreground = Bad;
+                return;
+            }
+            string modules = string.Join(", ", new[] { Module.Catalogue, Module.Orders }.Where(t.Has).Select(License.Label));
+            string state = License.Worst() switch
+            {
+                LicenseState.Licensed => "ενεργή",
+                LicenseState.Grace => "έληξε — περίοδος χάριτος " + t.GraceDays + " ημερών",
+                _ => "ΕΛΗΞΕ",
+            };
+            LicenceStateText.Text = $"{t.Customer} · {t.Licence} · {modules} · έως {t.LicenceUntil:dd/MM/yyyy} · {state}" +
+                                    (t.Store is long s ? $" · κατάστημα {s}" : "");
+            LicenceStateText.Foreground = License.Worst() switch { LicenseState.Licensed => Good, LicenseState.Grace => Warn, _ => Bad };
+        }
+
+        private void CopyFingerprintButton_Click(object sender, RoutedEventArgs e)
+        {
+            try { Clipboard.SetText(License.Fingerprint); ShowStatus("Το αποτύπωμα αντιγράφηκε.", Good); }
+            catch (Exception ex) { ShowStatus("Η αντιγραφή απέτυχε: " + ex.Message, Bad); }
+        }
+
+        private void InstallLicenceButton_Click(object sender, RoutedEventArgs e)
+        {
+            string token = LicenceBox.Text.Trim();
+            if (token.Length == 0) { ShowStatus("Επικολλήστε πρώτα το κείμενο της άδειας.", Warn); return; }
+            try
+            {
+                var result = License.Install(token);
+                if (!result.Ok) { ShowStatus("Η άδεια δεν έγινε δεκτή: " + result.Problem, Bad); return; }
+                LicenceBox.Clear();
+                ShowLicence();
+                ShowStatus($"Η άδεια ενεργοποιήθηκε: {result.Token!.Customer}, έως {result.Token.LicenceUntil:dd/MM/yyyy}.", Good);
+            }
+            catch (Exception ex)
+            {
+                ShowStatus("Η άδεια δεν αποθηκεύτηκε: " + ex.Message, Bad);
+            }
+        }
 
         private static readonly Brush Normal = Brushes.Black;
         private static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(0x5B, 0x65, 0x72));

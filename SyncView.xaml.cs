@@ -31,6 +31,30 @@ namespace CatalogBridge
 
         private async void SyncButton_Click(object sender, RoutedEventArgs e) => await SyncAsync();
 
+        // ---- licence -------------------------------------------------------------------------
+
+        // Called by MainWindow at start and after Ρυθμίσεις. Nothing to say while licensed.
+        public void ShowLicence()
+        {
+            var worst = License.Worst();
+            bool show = worst != LicenseState.Licensed;
+            LicenceBanner.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (!show) return;
+
+            bool amber = worst == LicenseState.Grace;
+            LicenceBanner.Background = new SolidColorBrush(amber ? Color.FromRgb(0xFF, 0xF4, 0xDB) : Color.FromRgb(0xFD, 0xEC, 0xEA));
+            LicenceBannerText.Foreground = new SolidColorBrush(amber ? Color.FromRgb(0xB2, 0x6A, 0x00) : Color.FromRgb(0xC4, 0x2B, 0x1C));
+            LicenceBannerText.Text = worst switch
+            {
+                LicenseState.Grace => $"⚠ {License.Summary()}. Το πρόγραμμα λειτουργεί κανονικά για λίγες μέρες ακόμα — επικοινωνήστε για ανανέωση.",
+                LicenseState.Expired => $"⛔ {License.Summary()}. Το πρόγραμμα μόνο δείχνει — δεν συγχρονίζει, δεν στέλνει, δεν αλλάζει τίποτα. Επικοινωνήστε για ανανέωση.",
+                _ => License.Current == null
+                    ? "⛔ Χωρίς άδεια χρήσης. Ανοίξτε τις Ρυθμίσεις → «Άδεια χρήσης», διαβάστε το αποτύπωμα του υπολογιστή και ζητήστε άδεια." +
+                      (License.Problem.Length > 0 && License.Problem != "Δεν υπάρχει άδεια χρήσης." ? $" ({License.Problem})" : "")
+                    : "⛔ " + License.Summary(),
+            };
+        }
+
         // ---- till orders → PointToOrder, automatic ------------------------------------------
 
         // Wired by MainWindow, which owns the service so it keeps running on every screen.
@@ -57,6 +81,7 @@ namespace CatalogBridge
 
             if (!settings.TillOrderSyncEnabled)
             {
+                if (License.Blocked(Module.Orders, out string why)) { ShowStatus(why, Bad); return; }
                 if (!settings.IsDatabaseConfigured || !settings.IsApiConfigured)
                 {
                     ShowStatus("Το πρόγραμμα δεν έχει ρυθμιστεί ακόμα — ανοίξτε τις Ρυθμίσεις (κάτω αριστερά).", Warn);
@@ -104,6 +129,7 @@ namespace CatalogBridge
                 return;
             }
 
+            if (License.Blocked(Module.Catalogue, out string why)) { ShowStatus(why, Bad); return; }
             if (!settings.IsDatabaseConfigured || !settings.IsApiConfigured)
             {
                 ShowStatus("Το πρόγραμμα δεν έχει ρυθμιστεί ακόμα — ανοίξτε τις Ρυθμίσεις (κάτω αριστερά).", Warn);

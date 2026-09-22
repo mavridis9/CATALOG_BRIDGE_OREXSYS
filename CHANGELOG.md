@@ -69,6 +69,16 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   orders — `orders/search` by token is used instead, and the till-sent token is read from the
   local registry, never from the platform. Decision logic unit-tested; the platform side was
   verified live on 1110; the Orexsys side runs the same call ΔΙΑΧΕΙΡΙΣΗ has used since 1.7.
+- **Licensing, phase 1** (owner, 22/09; design in `docs/LICENSING_AND_UPDATES.md`). Ρυθμίσεις →
+  «Άδεια χρήσης»: the PC's fingerprint (read it to the technician), a box to paste the licence,
+  «Ενεργοποίηση». The licence is a signed text issued per PC for one or both modules —
+  Συγχρονισμός Καταλόγου, Αντιστοίχιση Παραγγελιών & Πελατών — until a date; verified offline, no
+  internet needed. Without it, or after it expires (14 days' grace with an amber warning first),
+  the app only shows: no sync, no stock, no push, no EFIC edits, no reset, no trigger patch, no
+  customer creation, no order send/cancel, automatic services off — and nothing already done in
+  Orexsys or PointToOrder is touched. A module not in the licence has its screens hidden. Sidebar
+  shows «Άδεια: <πελάτης> · έως <ημερομηνία>»; the home page shows a red/amber banner when it is
+  not fine. Issued with `tools/LicenceSigner` (owner's PC only; the signing key is not in the repo).
 - **Automatic: «Παραγγελίες ταμείου → PointToOrder» switch on the home page.** Owner request
   22/09. `TillOrderSyncService` runs every 2 minutes while the app is open: every closed
   (STS 4), not cancelled till order — not one that came from the platform — placed since the

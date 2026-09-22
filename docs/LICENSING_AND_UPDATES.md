@@ -1,6 +1,6 @@
 # Licensing & automatic updates — design
 
-Status: **design, nothing built** (22/09/2026). Covers both products — Γέφυρα Καταλόγου
+Status: **phase 1 built** (22/09/2026, see §10) — the rest is design. Covers both products — Γέφυρα Καταλόγου
 (this repo) and ΔΙΑΧΕΙΡΙΣΗ (`mavridis9/LIGHTHOUSE_TOOL`) — because they will share one server
 and one client library. Read `CLAUDE.md` first for the module structure this depends on.
 
@@ -68,7 +68,9 @@ availability will go.
 ## 4. The licence token
 
 Issued by the server, cached by the client, verified **offline** with a public key embedded
-in the exe. Format: `base64url(payload) + "." + base64url(Ed25519 signature)`. The payload:
+in the exe. Format: `base64url(payload) + "." + base64url(signature)`. **Built with ECDSA P-256 /
+SHA-256 (IEEE P1363)** rather than Ed25519: it is in .NET itself, so the single-file exe carries
+no crypto package; same security class, same key handling. The payload:
 
 ```json
 {
@@ -172,10 +174,10 @@ the *same* fingerprint is idempotent (reinstall, restored PC).
 
 ## 6. Client flow
 
-**Files** (next to the exe, like everything else): `licence.dat` = the token, DPAPI-wrapped
-with the app's existing entropy; readable only on that machine, which is fine — it is only
-valid there anyway. `settings.ini` gains nothing except the licence key (so the shop sees
-it in Ρυθμίσεις).
+**Files** (next to the exe, like everything else): `licence.dat` = the token, plain text
+(built that way in phase 1: it holds no secret — it is signed and only valid on that machine —
+and a plain file is what a shop can e-mail back when something is wrong). `settings.ini`
+gains nothing; the licence key is inside the token and shown in Ρυθμίσεις.
 
 **Start-up** (`App.OnStartup`, before the main window):
 1. Read `licence.dat`, verify offline (§4) → state per module. Never blocks on the network.
@@ -298,7 +300,8 @@ added in a release and the first retired in a later one without a flag day.
 
 ## 10. Phases
 
-1. **Client-side licence, no server** (1–2 days). `License` class, token format, offline
+1. **Client-side licence, no server** — BUILT 22/09/2026 (`LicenseToken.cs`, `License.cs`,
+   `tools/LicenceSigner`, «Άδεια χρήσης» in Ρυθμίσεις, gates in every write path, 8 tests). `License` class, token format, offline
    verification, `Allows(Module)` wired into the existing checks, Ρυθμίσεις section, dashboard
    line. Tokens signed by a tiny console tool on your machine (`sign-licence.exe`) — this is
    the "manual licensing" you can ship *now*; the server later only automates issuing.
