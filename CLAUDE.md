@@ -211,8 +211,25 @@ git-ignored and excluded from publish. The sidebar shows the version.
   first (Συγχρονισμός, push, EFIC repair/delete/map, reset, stock sync, trigger apply, till-order
   switch + service, customer create/send/card/invite, order send/cancel); expired = read-only +
   services stop; module absent = its nav hidden; **licence state never removes anything** (trigger
-  patch stays for ΔΙΑΧΕΙΡΙΣΗ). No server yet: renewal = a new token pasted in Ρυθμίσεις → «Άδεια
-  χρήσης». `LicenseToken.cs` is pure and shared by app, tool and tests - never copy it.
+  patch stays for ΔΙΑΧΕΙΡΙΣΗ). The app does not call the server yet: renewal = a new token pasted
+  in Ρυθμίσεις → «Άδεια χρήσης». `LicenseToken.cs` is pure and shared by app, tool and tests -
+  never copy it inside this repo (the server repo keeps the one sanctioned copy, see next bullet).
+- **Licensing, phase 2: the server (22/09).** Built in its own repo, `D:\Claude\Catalogue_Portal`
+  (ASP.NET Core minimal API, .NET 8, SQLite; read its `CLAUDE.md`). Endpoints as design §5:
+  `POST /v1/activate|heartbeat|deactivate`, `GET /v1/updates/{product}/{channel}` (404 until phase 3),
+  `/admin/*` behind a bearer key, plus the `licence-admin` CLI (create, extend, modules, suspend,
+  bind store, fleet, deactivate). It signs with the SAME key (`D:\Claude\CatalogBridge.keys\`, read
+  from a configured path) and refuses to start unless it matches `License.PublicKeys[0]`, so its
+  tokens verify here unchanged. It compiles a byte-identical copy of `LicenseToken.cs` guarded by a
+  drift test: **a change to `LicenseToken.cs` here must be copied there in the same step.** Server
+  rules the client must match when phase-2 client work starts: `valid_until = min(now + 30 d,
+  licence_until)` (§4, owner 22/09); one active installation per key, second fingerprint → 409
+  with the other activation's date; error codes in the JSON `error` field (`bad-key`,
+  `unknown-licence`, `suspended`, `store-mismatch`, `licence-expired`, `not-activated`,
+  `already-activated-elsewhere`, `rate-limited`) with the Greek text in `message`; rate limits
+  activate 5/h per key, heartbeat 1/h per installation (429 + `Retry-After`); the fingerprint is
+  sent as the app formats it, the token carries it dash-less (`Verify` already normalises). Not
+  yet done here: the activate/heartbeat calls, the 20 h heartbeat schedule, «Αποδέσμευση».
 - **Cancel in both platforms with one click (22/09).** «Ακύρωση παραγγελίας» in the customer's
   orders window: `OrderCancel.Decide(cancelledInOrexsys, platformStatus)` → None / OrexsysOnly /
   PlatformOnly / Both — only the side(s) still active are touched, so a second press does nothing.
