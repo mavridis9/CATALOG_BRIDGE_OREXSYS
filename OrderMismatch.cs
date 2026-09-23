@@ -35,6 +35,11 @@ namespace CatalogBridge
             ? $"Ακυρωμένη στο Orexsys, αλλά στο PointToOrder ({Token}) είναι ακόμα ενεργή."
             : $"Ακυρωμένη στο PointToOrder ({Token}), αλλά στο Orexsys είναι ακόμα ενεργή.";
 
+        // One line for the grid column.
+        public string Short => Kind == MismatchKind.CancelledInOrexsysActiveOnPlatform
+            ? $"Ακυρωμένη στο Orexsys · ενεργή στο PointToOrder ({Token})"
+            : $"Ακυρωμένη στο PointToOrder ({Token}) · ενεργή στο Orexsys";
+
         public string Action => Kind == MismatchKind.CancelledInOrexsysActiveOnPlatform
             ? "Ακύρωση στο PointToOrder" : "Ακύρωση στο Orexsys";
     }

@@ -60,11 +60,18 @@ namespace CatalogBridge
         // Wired by MainWindow, which owns the service.
         public OrderMismatchService? Mismatches { get; set; }
 
+        private static readonly Brush DotOff = new SolidColorBrush(Color.FromRgb(0xC9, 0xCE, 0xD9));
+        private static readonly Brush DotOn = new SolidColorBrush(Color.FromRgb(0x16, 0x80, 0x3C));
+        private static readonly Brush DotBad = new SolidColorBrush(Color.FromRgb(0xC4, 0x2B, 0x1C));
+
         public void ShowMismatches(List<Mismatch> found, string status)
         {
-            MismatchList.ItemsSource = found;
+            MismatchGrid.ItemsSource = found;
+            MismatchGrid.Visibility = found.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
             MismatchStatusText.Text = status;
-            MismatchStatusText.Foreground = found.Count > 0 ? Bad : Normal;
+            bool error = status.Contains("σφάλμα");
+            MismatchStatusText.Foreground = found.Count > 0 || error ? Bad : Normal;
+            MismatchDot.Background = found.Count > 0 || error ? DotBad : status.Length > 0 ? DotOn : DotOff;
         }
 
         private async void MismatchCheckButton_Click(object sender, RoutedEventArgs e)
@@ -81,7 +88,7 @@ namespace CatalogBridge
         private async void MismatchFix_Click(object sender, RoutedEventArgs e)
         {
             if ((sender as FrameworkElement)?.DataContext is not Mismatch m) return;
-            if (License.Blocked(Module.Orders, out string why)) { ShowMismatches((List<Mismatch>)MismatchList.ItemsSource, why); return; }
+            if (License.Blocked(Module.Orders, out string why)) { ShowMismatches((List<Mismatch>)MismatchGrid.ItemsSource, why); return; }
 
             bool onPlatform = m.Kind == MismatchKind.CancelledInOrexsysActiveOnPlatform;
             var sure = MessageBox.Show(
@@ -132,6 +139,7 @@ namespace CatalogBridge
         {
             bool on = settings.TillOrderSyncEnabled;
             TillSyncButton.Content = on ? "Απενεργοποίηση" : "Ενεργοποίηση";
+            TillSyncDot.Background = on && License.CanWrite(Module.Orders) ? DotOn : DotOff;
             TillSyncStateText.Text = on
                 ? $"Ενεργό από {settings.TillOrderSyncSince:dd/MM/yyyy}: κάθε κλειστή παραγγελία του ταμείου για πελάτη με " +
                   "λογαριασμό PointToOrder στέλνεται μόνη της στο ιστορικό του (μόνο αν είναι ολόιδια — ίδια προϊόντα, ίδιες τιμές)."

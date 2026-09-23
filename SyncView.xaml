@@ -3,97 +3,118 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel MaxWidth="680" HorizontalAlignment="Center" VerticalAlignment="Center"
-                    Margin="0,40,0,40">
+        <StackPanel MaxWidth="900" HorizontalAlignment="Stretch" Margin="0,4,0,40">
 
-            <Border Background="{StaticResource AccentSoft}" CornerRadius="40" Width="80" Height="80"
-                    HorizontalAlignment="Center">
-                <TextBlock Text="⇄" FontSize="36" Foreground="{StaticResource AccentBrush}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
-            </Border>
-
-            <TextBlock Text="Συγχρονισμός καταλόγου" FontSize="26" FontWeight="Bold"
-                       Foreground="{StaticResource InkBrush}" HorizontalAlignment="Center"
-                       Margin="0,18,0,6"/>
-            <TextBlock Text="Ο κατάλογος του Orexsys στέλνεται στο PointToOrder και τα δύο συστήματα μένουν πάντα ίδια."
-                       FontSize="14" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
-                       TextAlignment="Center" HorizontalAlignment="Center" MaxWidth="480"/>
-
-            <Button x:Name="SyncButton" Content="Συγχρονισμός" Style="{StaticResource PrimaryButton}"
-                    FontSize="17" Padding="46,15" HorizontalAlignment="Center" Margin="0,26,0,0"
-                    Click="SyncButton_Click"/>
-
-            <TextBlock x:Name="StatusText" FontSize="13.5" Foreground="{StaticResource MutedBrush}"
-                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
-                       Margin="0,16,0,0" Text=""/>
-
-            <!-- Licence tripwire: red when expired / missing, amber in grace (License.Summary) -->
-            <Border x:Name="LicenceBanner" Visibility="Collapsed" CornerRadius="8" Padding="14,10" Margin="0,16,0,0"
-                    MinWidth="520" HorizontalAlignment="Center" Background="#FDECEA">
-                <TextBlock x:Name="LicenceBannerText" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
-                           Foreground="#C42B1C"/>
-            </Border>
-
-            <!-- Till orders → PointToOrder, automatic (owner request 22/09/2026) -->
-            <Border Style="{StaticResource Card}" Margin="0,22,0,0" MinWidth="520" Padding="16">
-                <StackPanel>
-                    <Grid>
-                        <StackPanel>
+            <!-- 1. Till orders → PointToOrder, automatic (owner request 22/09/2026; on top since 23/09) -->
+            <Border Style="{StaticResource Card}" Padding="18,14">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <StackPanel Orientation="Horizontal">
+                            <Border x:Name="TillSyncDot" Width="10" Height="10" CornerRadius="5" Background="#C9CED9"
+                                    VerticalAlignment="Center" Margin="0,1,8,0"/>
                             <TextBlock Text="Παραγγελίες ταμείου → PointToOrder" FontSize="15" FontWeight="SemiBold"
                                        Foreground="{StaticResource InkBrush}"/>
-                            <TextBlock x:Name="TillSyncStateText" Text="Ανενεργό" FontSize="12.5" Margin="0,2,0,0"
-                                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" MaxWidth="330"/>
                         </StackPanel>
-                        <Button x:Name="TillSyncButton" Content="Ενεργοποίηση" Style="{StaticResource SecondaryButton}"
-                                HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="150"
-                                Click="TillSyncButton_Click"/>
-                    </Grid>
-                    <TextBlock x:Name="TillSyncStatusText" Text="" FontSize="12" Margin="0,8,0,0"
-                               Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="TillSyncStateText" Text="Ανενεργό" FontSize="12.5" Margin="18,3,0,0"
+                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="TillSyncStatusText" Text="" FontSize="12" Margin="18,6,0,0"
+                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" x:Name="TillSyncButton" Content="Ενεργοποίηση" Style="{StaticResource SecondaryButton}"
+                            VerticalAlignment="Center" MinWidth="150" Click="TillSyncButton_Click"/>
+                </Grid>
+            </Border>
+
+            <!-- 2. The one button -->
+            <Border Style="{StaticResource Card}" Margin="0,16,0,0" Padding="24,26">
+                <StackPanel HorizontalAlignment="Center">
+                    <Border Background="{StaticResource AccentSoft}" CornerRadius="32" Width="64" Height="64"
+                            HorizontalAlignment="Center">
+                        <TextBlock Text="⇄" FontSize="30" Foreground="{StaticResource AccentBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock Text="Συγχρονισμός καταλόγου" FontSize="24" FontWeight="Bold"
+                               Foreground="{StaticResource InkBrush}" HorizontalAlignment="Center" Margin="0,14,0,4"/>
+                    <TextBlock Text="Ο κατάλογος του Orexsys στέλνεται στο PointToOrder και τα δύο συστήματα μένουν πάντα ίδια."
+                               FontSize="13.5" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"
+                               TextAlignment="Center" HorizontalAlignment="Center" MaxWidth="480"/>
+                    <Button x:Name="SyncButton" Content="Συγχρονισμός" Style="{StaticResource PrimaryButton}"
+                            FontSize="16" Padding="44,13" HorizontalAlignment="Center" Margin="0,20,0,0"
+                            Click="SyncButton_Click"/>
+                    <TextBlock x:Name="StatusText" FontSize="13" Foreground="{StaticResource MutedBrush}"
+                               HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
+                               Margin="0,14,0,0" Text="" MaxWidth="600"/>
+
+                    <!-- Licence tripwire: red when expired / missing, amber in grace (License.Summary) -->
+                    <Border x:Name="LicenceBanner" Visibility="Collapsed" CornerRadius="8" Padding="14,10" Margin="0,14,0,0"
+                            HorizontalAlignment="Stretch" Background="#FDECEA">
+                        <TextBlock x:Name="LicenceBannerText" FontSize="13" TextWrapping="Wrap" TextAlignment="Center"
+                                   Foreground="#C42B1C"/>
+                    </Border>
                 </StackPanel>
             </Border>
 
-            <!-- Order mismatches: cancelled on one side, active on the other (owner, 23/09/2026) -->
-            <Border x:Name="MismatchCard" Style="{StaticResource Card}" Margin="0,20,0,0" MinWidth="520" MaxWidth="720" Padding="16">
+            <!-- 3. Order mismatches: cancelled on one side, active on the other (owner, 23/09/2026) -->
+            <Border x:Name="MismatchCard" Style="{StaticResource Card}" Margin="0,16,0,0" Padding="18,14">
                 <StackPanel>
                     <Grid>
-                        <StackPanel>
-                            <TextBlock Text="Ασυμφωνίες παραγγελιών" FontSize="15" FontWeight="SemiBold"
-                                       Foreground="{StaticResource InkBrush}"/>
-                            <TextBlock x:Name="MismatchStatusText" Text="Έλεγχος..." FontSize="12.5" Margin="0,2,0,0"
-                                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" MaxWidth="440"/>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Border x:Name="MismatchDot" Width="10" Height="10" CornerRadius="5" Background="#C9CED9"
+                                        VerticalAlignment="Center" Margin="0,1,8,0"/>
+                                <TextBlock Text="Ασυμφωνίες παραγγελιών" FontSize="15" FontWeight="SemiBold"
+                                           Foreground="{StaticResource InkBrush}"/>
+                            </StackPanel>
+                            <TextBlock x:Name="MismatchStatusText" Text="Έλεγχος..." FontSize="12.5" Margin="18,3,0,0"
+                                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
                         </StackPanel>
-                        <Button x:Name="MismatchCheckButton" Content="Έλεγχος τώρα" Style="{StaticResource SecondaryButton}"
-                                HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="130"
-                                Click="MismatchCheckButton_Click"/>
+                        <Button Grid.Column="1" x:Name="MismatchCheckButton" Content="Έλεγχος τώρα" Style="{StaticResource SecondaryButton}"
+                                VerticalAlignment="Center" MinWidth="130" Click="MismatchCheckButton_Click"/>
                     </Grid>
-                    <ItemsControl x:Name="MismatchList" Margin="0,10,0,0">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border BorderBrush="#F1D4CF" BorderThickness="0,1,0,0" Padding="0,10,0,10">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource InkBrush}" TextWrapping="Wrap"/>
-                                            <TextBlock Text="{Binding Problem}" FontSize="12.5" Margin="0,2,0,0"
-                                                       Foreground="#C42B1C" TextWrapping="Wrap"/>
-                                        </StackPanel>
-                                        <Button Grid.Column="1" Content="{Binding Action}" Style="{StaticResource SecondaryButton}"
-                                                VerticalAlignment="Center" MinWidth="170" Click="MismatchFix_Click"/>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+
+                    <DataGrid x:Name="MismatchGrid" Style="{StaticResource ModernGrid}" Margin="0,10,0,0"
+                              SelectionMode="Single" Visibility="Collapsed" MaxHeight="320">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Ημερομηνία" Binding="{Binding When, StringFormat=dd/MM/yyyy HH:mm}" Width="125"/>
+                            <DataGridTextColumn Header="Αρ." Binding="{Binding OrdmId}" Width="55"/>
+                            <DataGridTextColumn Header="Πελάτης" Binding="{Binding Customer}" Width="170"/>
+                            <DataGridTextColumn Header="Ποσό" Binding="{Binding Total, StringFormat=0.00}" Width="70">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Πρόβλημα" Binding="{Binding Short}" Width="*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#C42B1C"/>
+                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTemplateColumn Header="" Width="Auto">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="{Binding Action}" Style="{StaticResource SecondaryButton}"
+                                                Padding="10,4" Margin="4,2" FontSize="12.5" Click="MismatchFix_Click"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
                 </StackPanel>
             </Border>
 
-            <Border x:Name="ResultsCard" Style="{StaticResource Card}" Margin="0,20,0,0"
-                    Visibility="Collapsed" MinWidth="520">
+            <!-- 4. What the last Συγχρονισμός did -->
+            <Border x:Name="ResultsCard" Style="{StaticResource Card}" Margin="0,16,0,0"
+                    Visibility="Collapsed" Padding="18,14">
                 <ItemsControl x:Name="ResultsList">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
