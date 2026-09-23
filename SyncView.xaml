@@ -87,7 +87,7 @@
                               SelectionMode="Single" Visibility="Collapsed" MaxHeight="320">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Ημερομηνία" Binding="{Binding When, StringFormat=dd/MM/yyyy HH:mm}" Width="125"/>
-                            <DataGridTextColumn Header="Αρ." Binding="{Binding OrdmId}" Width="55"/>
+                            <DataGridTextColumn Header="Αρ." Binding="{Binding Ref}" Width="65"/>
                             <DataGridTextColumn Header="Πελάτης" Binding="{Binding Customer}" Width="170"/>
                             <DataGridTextColumn Header="Ποσό" Binding="{Binding Total, StringFormat=0.00}" Width="70">
                                 <DataGridTextColumn.ElementStyle>

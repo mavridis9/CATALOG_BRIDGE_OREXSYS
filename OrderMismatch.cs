@@ -54,6 +54,9 @@ namespace CatalogBridge
         };
 
         public bool HasAction => Action.Length > 0;
+
+        // «Αρ.» column: the Orexsys number, or the platform token when there is no Orexsys order.
+        public string Ref => OrdmId > 0 ? OrdmId.ToString() : Token;
     }
 
     // A customer that exists on both sides (same e-mail - the link the trigger uses).
