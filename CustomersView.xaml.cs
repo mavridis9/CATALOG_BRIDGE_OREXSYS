@@ -16,10 +16,22 @@ namespace CatalogBridge
     public partial class CustomersView : UserControl
     {
         private List<CustomerRow> rows = new();
+        private bool autoLoadDone;
 
         public CustomersView()
         {
             InitializeComponent();
+
+            // Loads itself the first time the tab is shown (owner, 23/09/2026: a list loaded
+            // hours earlier showed a customer as «μόνο στο Orexsys» after his PointToOrder
+            // account had changed). Loaded fires again on every navigation back, so it runs
+            // once; «Φόρτωση» remains the explicit refresh.
+            Loaded += async (s, e) =>
+            {
+                if (autoLoadDone) return;
+                autoLoadDone = true;
+                await LoadAsync();
+            };
         }
 
         private async void LoadButton_Click(object sender, RoutedEventArgs e) => await LoadAsync();

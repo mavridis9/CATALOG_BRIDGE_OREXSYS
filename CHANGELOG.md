@@ -88,6 +88,10 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   problem, with one button — «Ακύρωση στο PointToOrder» or «Ακύρωση στο Orexsys» — that acts only
   after confirmation, the same way the «Ακύρωση παραγγελίας» button does. Nothing is automatic.
   First live run found #3 (87-5Z): cancelled on the platform on 22/09, still active in Orexsys.
+- **Πελάτες loads itself** the first time the tab is opened (owner, 23/09) — a list loaded hours
+  earlier had shown a customer as «μόνο στο Orexsys» after his PointToOrder account changed.
+  «Φόρτωση» remains the refresh. Home screen re-laid out the same day: the till-order switch on
+  top, the sync button in the middle, mismatches as a grid.
 - **Automatic: «Παραγγελίες ταμείου → PointToOrder» switch on the home page.** Owner request
   22/09. `TillOrderSyncService` runs every 2 minutes while the app is open: every closed
   (STS 4), not cancelled till order — not one that came from the platform — placed since the
