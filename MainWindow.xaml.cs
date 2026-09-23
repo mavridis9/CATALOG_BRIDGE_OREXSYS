@@ -41,7 +41,7 @@ namespace CatalogBridge
             sync.TillSync = tillSync;
             tillSync.StatusChanged += message => Dispatcher.Invoke(() => sync.ShowTillSyncStatus(message));
             sync.Mismatches = mismatches;
-            mismatches.Checked += (found, status) => Dispatcher.Invoke(() => sync.ShowMismatches(found, status));
+            mismatches.Checked += (report, status) => Dispatcher.Invoke(() => sync.ShowMismatches(report, status));
 
             ApplySettings();
         }

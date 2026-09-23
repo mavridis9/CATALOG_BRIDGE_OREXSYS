@@ -1,22 +1,22 @@
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows.Threading;
 
 namespace CatalogBridge
 {
-    // Runs OrderMismatch.FindAsync at start and every 10 minutes while the app is open, and
-    // hands the result to Αρχική (SyncView). Read-only; the fix is the user's click there.
+    // Runs OrderMismatch.FindAsync at start and every 5 minutes while the app is open, and
+    // hands the report to Αρχική (SyncView): order-level mismatches (cancelled on one side) and
+    // per-linked-customer totals that differ. Read-only; the fix is the user's click there.
     // Runs whenever the database and the API are configured and the «orders» module is in
-    // the licence (an expired one may still LOOK - only the cancel buttons refuse).
+    // the licence (an expired one may still LOOK - only the buttons refuse).
     public class OrderMismatchService
     {
-        private static readonly TimeSpan Interval = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan Interval = TimeSpan.FromMinutes(5);
         private readonly DispatcherTimer timer;
         private bool running;
 
-        // (mismatches, status line)
-        public event Action<List<Mismatch>, string>? Checked;
+        // (report, status line)
+        public event Action<MismatchReport, string>? Checked;
 
         public OrderMismatchService()
         {
@@ -36,7 +36,7 @@ namespace CatalogBridge
             else if (!shouldRun && timer.IsEnabled)
             {
                 timer.Stop();
-                Checked?.Invoke(new List<Mismatch>(), "");
+                Checked?.Invoke(new MismatchReport(), "");
             }
         }
 
@@ -51,14 +51,18 @@ namespace CatalogBridge
                 Settings settings = Settings.Load();
                 if (!settings.IsDatabaseConfigured || !settings.IsApiConfigured) return;
                 using var api = new PointToOrderApiClient(settings);
-                var found = await OrderMismatch.FindAsync(settings, api);
-                Checked?.Invoke(found, found.Count == 0
-                    ? $"Παραγγελίες: καμία ασυμφωνία τις τελευταίες 30 μέρες ({DateTime.Now:HH:mm})"
-                    : $"Παραγγελίες: {found.Count} ασυμφωνί{(found.Count == 1 ? "α" : "ες")} ({DateTime.Now:HH:mm})");
+                var report = await OrderMismatch.FindAsync(settings, api);
+                string when = DateTime.Now.ToString("HH:mm");
+                Checked?.Invoke(report, report.Count == 0
+                    ? $"Καμία ασυμφωνία τις τελευταίες 30 μέρες ({when})"
+                    : $"{(report.Orders.Count > 0 ? $"{report.Orders.Count} παραγγελί{(report.Orders.Count == 1 ? "α" : "ες")}" : "")}" +
+                      (report.Orders.Count > 0 && report.Customers.Count > 0 ? " · " : "") +
+                      $"{(report.Customers.Count > 0 ? $"{report.Customers.Count} πελάτ{(report.Customers.Count == 1 ? "ης" : "ες")} με διαφορετικά σύνολα" : "")}" +
+                      $" ({when})");
             }
             catch (Exception ex)
             {
-                Checked?.Invoke(new List<Mismatch>(), $"Έλεγχος παραγγελιών: σφάλμα ({DateTime.Now:HH:mm}) — {ex.Message}");
+                Checked?.Invoke(new MismatchReport(), $"Έλεγχος: σφάλμα ({DateTime.Now:HH:mm}) — {ex.Message}");
             }
             finally
             {

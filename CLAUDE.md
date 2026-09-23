@@ -201,12 +201,14 @@ git-ignored and excluded from publish. The sidebar shows the version.
   / `TagToExternalId`). `SendAsync` = single-flight + register (`SentFile`, shared by button and
   service) + full-history re-check + draft DELETE on failure before submit. Keep all three inside
   `SendAsync`, not in callers.
-- **«Ασυμφωνίες παραγγελιών» (23/09).** `OrderMismatch.Compare` (pure) + `OrderMismatchService`
-  (10′) + card on Αρχική: last 30 days, Orexsys side (`ORDM` + customer + EFOM.JSON token) vs
+- **«Ασυμφωνίες παραγγελιών» (23/09).** `OrderMismatch.Compare` + `CompareCustomers` (pure) + `OrderMismatchService`
+  (5′) + card on Αρχική: last 30 days, Orexsys side (`ORDM` + effective CUSTID + EFOM.JSON token) vs
   platform side (`orders/search {createdAtFrom}` — every status, one paged call). Link order of
   trust: EFOM token → local registry → comment tag. Two kinds, one button each, user-confirmed,
   reusing `TillOrderSender.CancelOnPlatformAsync` / `OrderCancel.CancelInOrexsysAsync`. Read-only
   otherwise; needs the `orders` module present (expired may look, not act).
+  Per LINKED customer (Πελάτες' e-mail match, `LoadLinkedAsync`) the active count/total of each
+  side is compared; only differing customers are shown, with the orders on one side only named.
 - **Licensing, phase 1 (22/09).** Two modules — `catalogue` (§1-A: sync, diff, EFIC, sizes, stock,
   reset) and `orders` (B + everything riding on it: trigger patch, Πελάτες, till orders → history,
   cancel). Design: `docs/LICENSING_AND_UPDATES.md`. Token = signed JSON (ECDSA P-256, public key

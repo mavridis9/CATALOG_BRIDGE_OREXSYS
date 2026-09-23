@@ -92,6 +92,16 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   earlier had shown a customer as «μόνο στο Orexsys» after his PointToOrder account changed.
   «Φόρτωση» remains the refresh. Home screen re-laid out the same day: the till-order switch on
   top, the sync button in the middle, mismatches as a grid.
+- **Per-customer totals, every 5 minutes** (owner, 23/09). The «Ασυμφωνίες παραγγελιών» check now
+  runs every 5′ (was 10′) and, for every customer that exists on BOTH sides (same e-mail — the
+  link the trigger uses; plain Orexsys customers are left alone), compares the last 30 days:
+  count and total of active orders in Orexsys against count and total on PointToOrder. Only the
+  customers that differ are listed — Orexsys · PointToOrder · Διαφορά — with the reason spelled
+  out per order: «#20 12,00 μόνο στο Orexsys» (a till order never sent), «AB-12 9,50 μόνο στο
+  PointToOrder» (an online order that never reached Orexsys, or landed on another customer),
+  «#10/TP-5Z: 14,56 ≠ 14,00» (same order, different amount). «Παραγγελίες...» opens the customer's
+  orders window to fix it. First live run: Stratos, Orexsys 3 · 604,00 vs PointToOrder 5 · 708,00 —
+  the two duplicate copies from the 22/09 tests (H9-P2, 5H-KZ) found by the check itself.
 - **Automatic: «Παραγγελίες ταμείου → PointToOrder» switch on the home page.** Owner request
   22/09. `TillOrderSyncService` runs every 2 minutes while the app is open: every closed
   (STS 4), not cancelled till order — not one that came from the platform — placed since the

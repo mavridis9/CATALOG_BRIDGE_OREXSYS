@@ -64,14 +64,32 @@ namespace CatalogBridge
         private static readonly Brush DotOn = new SolidColorBrush(Color.FromRgb(0x16, 0x80, 0x3C));
         private static readonly Brush DotBad = new SolidColorBrush(Color.FromRgb(0xC4, 0x2B, 0x1C));
 
-        public void ShowMismatches(List<Mismatch> found, string status)
+        private MismatchReport lastReport = new();
+
+        public void ShowMismatches(MismatchReport report, string status)
         {
-            MismatchGrid.ItemsSource = found;
-            MismatchGrid.Visibility = found.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            lastReport = report;
+            MismatchGrid.ItemsSource = report.Orders;
+            MismatchGrid.Visibility = report.Orders.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            CustomerTotalsHeader.Visibility = CustomerTotalsGrid.Visibility =
+                report.Customers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            CustomerTotalsGrid.ItemsSource = report.Customers;
             MismatchStatusText.Text = status;
             bool error = status.Contains("σφάλμα");
-            MismatchStatusText.Foreground = found.Count > 0 || error ? Bad : Normal;
-            MismatchDot.Background = found.Count > 0 || error ? DotBad : status.Length > 0 ? DotOn : DotOff;
+            MismatchStatusText.Foreground = report.Count > 0 || error ? Bad : Normal;
+            MismatchDot.Background = report.Count > 0 || error ? DotBad : status.Length > 0 ? DotOn : DotOff;
+        }
+
+        // «Παραγγελίες...» on a customer whose totals differ: the same window as the double-click
+        // in Πελάτες, where each order can be sent or cancelled.
+        private async void CustomerTotalsOpen_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is not CustomerTotals c) return;
+            Settings settings;
+            try { settings = Settings.Load(); }
+            catch (Exception ex) { MismatchStatusText.Text = "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message; return; }
+            new CustomerOrdersWindow(settings, c.Customer) { Owner = Window.GetWindow(this) }.ShowDialog();
+            if (Mismatches != null) await Mismatches.RunNowAsync();
         }
 
         private async void MismatchCheckButton_Click(object sender, RoutedEventArgs e)
@@ -88,7 +106,7 @@ namespace CatalogBridge
         private async void MismatchFix_Click(object sender, RoutedEventArgs e)
         {
             if ((sender as FrameworkElement)?.DataContext is not Mismatch m) return;
-            if (License.Blocked(Module.Orders, out string why)) { ShowMismatches((List<Mismatch>)MismatchGrid.ItemsSource, why); return; }
+            if (License.Blocked(Module.Orders, out string why)) { ShowMismatches(lastReport, why); return; }
 
             bool onPlatform = m.Kind == MismatchKind.CancelledInOrexsysActiveOnPlatform;
             var sure = MessageBox.Show(

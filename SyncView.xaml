@@ -109,6 +109,49 @@
                             </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
+
+                    <!-- Per linked customer: the two sides' totals over the last 30 days, only where they differ -->
+                    <TextBlock x:Name="CustomerTotalsHeader" Text="Σύνολα ανά πελάτη (τελευταίες 30 μέρες) — μόνο όσοι διαφέρουν"
+                               FontSize="12.5" FontWeight="SemiBold" Margin="18,14,0,0" Visibility="Collapsed"
+                               Foreground="{StaticResource InkBrush}"/>
+                    <DataGrid x:Name="CustomerTotalsGrid" Style="{StaticResource ModernGrid}" Margin="0,6,0,0"
+                              SelectionMode="Single" Visibility="Collapsed" MaxHeight="320">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Πελάτης" Binding="{Binding Customer.Name}" Width="170"/>
+                            <DataGridTextColumn Header="Orexsys" Binding="{Binding OrexsysText}" Width="105">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="PointToOrder" Binding="{Binding PlatformText}" Width="105">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock"><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Διαφορά" Binding="{Binding DifferenceText}" Width="85">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                        <Setter Property="Foreground" Value="#C42B1C"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                    </Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTextColumn Header="Λεπτομέρειες" Binding="{Binding Details}" Width="*">
+                                <DataGridTextColumn.ElementStyle>
+                                    <Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/></Style>
+                                </DataGridTextColumn.ElementStyle>
+                            </DataGridTextColumn>
+                            <DataGridTemplateColumn Header="" Width="Auto">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="Παραγγελίες..." Style="{StaticResource SecondaryButton}"
+                                                Padding="10,4" Margin="4,2" FontSize="12.5" Click="CustomerTotalsOpen_Click"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                        </DataGrid.Columns>
+                    </DataGrid>
                 </StackPanel>
             </Border>
 
