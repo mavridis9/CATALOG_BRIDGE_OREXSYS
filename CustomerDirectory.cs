@@ -297,10 +297,11 @@ namespace CatalogBridge
         // card carries the person in CARDCUSTID with CUSTID 0); cancelled = CANCELED = 1 or
         // TOTAL = 0 (shown, not hidden - see CustomerOrders.Cancelled). Items = the main lines
         // (ORDDID = PARENTID; extras hang off them). PlatformOrderNumber is the PointToOrder
-        // token for an order that arrived FROM the platform, read out of EFOM.JSON
-        // (orderDetails.orderNumber — that field survives; externalOrderId in the platform's own
-        // history does not, see TagToExternalId) so a one-click cancel can find it there too.
-        // Read-only.
+        // token for an order that arrived FROM the platform - EFOM.ORDERID, the column the
+        // connector fills (the token survives there; externalOrderId in the platform's own
+        // history does not, see TagToExternalId) - so a one-click cancel can find it there too.
+        // Never CAST EFOM.JSON to VARCHAR: Firebird raises «string right truncation» for a JSON
+        // longer than the cast (seen 23/09), it does not truncate. Read-only.
         public static Task<CustomerOrders> LoadOrdersAsync(Settings settings, long custId) => Task.Run(() =>
         {
             var result = new CustomerOrders();
@@ -309,7 +310,7 @@ namespace CatalogBridge
             const string sql = @"
                 SELECT m.ORDMID, m.ODATE, m.OTIME, m.OTYPE, m.STS, m.CANCELED, m.TOTAL,
                        (SELECT COUNT(*) FROM EFOM e WHERE e.ORDMID = m.ORDMID) AS FROMP2O,
-                       (SELECT FIRST 1 CAST(e.JSON AS VARCHAR(8000)) FROM EFOM e WHERE e.ORDMID = m.ORDMID) AS EFOMJSON,
+                       (SELECT FIRST 1 e.ORDERID FROM EFOM e WHERE e.ORDMID = m.ORDMID) AS TOKEN,
                        (SELECT LIST(TRIM(d.NAME) || IIF(d.QTY <> 1, ' ×' || CAST(d.QTY AS INTEGER), ''), ', ')
                           FROM ORDD d WHERE d.ORDMID = m.ORDMID AND d.ORDDID = d.PARENTID AND d.QTY > 0) AS ITEMS
                 FROM ORDM m
@@ -332,24 +333,10 @@ namespace CatalogBridge
                     otype switch { 2 => "Online / delivery", 3 => "Take away", 1 => "Τραπέζι", _ => $"Τύπος {otype}" },
                     cancelled ? "Ακυρωμένη" : (sts == 4 ? "Κλειστή" : "Ανοιχτή"),
                     total, Str(reader["ITEMS"]), Convert.ToInt32(reader["FROMP2O"]) > 0, cancelled,
-                    PlatformOrderNumberFromEfomJson(Str(reader["EFOMJSON"]))));
+                    Str(reader["TOKEN"])));
             }
             return result;
         });
-
-        // «"orderDetails":{"orderNumber":"TP-5Z",...}» → "TP-5Z"; anything else (no EFOM row, the
-        // field missing) → "" — treated as «no PointToOrder order known». A plain substring scan,
-        // not JsonDocument.Parse: the JSON is CAST to VARCHAR(8000) in SQL and a big order (many
-        // lines) can be cut off before its closing brace, which would make the whole document
-        // invalid even though "orderNumber" — near the very start, before orderItems — is intact.
-        public static string PlatformOrderNumberFromEfomJson(string json)
-        {
-            const string needle = "\"orderNumber\":\"";
-            int i = json.IndexOf(needle, StringComparison.Ordinal);
-            if (i < 0) return "";
-            int start = i + needle.Length, end = json.IndexOf('"', start);
-            return end > start ? json[start..end] : "";
-        }
 
         // ---- «Κάρτα...»: a card for a customer that has none --------------------------------
 

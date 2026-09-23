@@ -102,6 +102,20 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   «#10/TP-5Z: 14,56 ≠ 14,00» (same order, different amount). «Παραγγελίες...» opens the customer's
   orders window to fix it. First live run: Stratos, Orexsys 3 · 604,00 vs PointToOrder 5 · 708,00 —
   the two duplicate copies from the 22/09 tests (H9-P2, 5H-KZ) found by the check itself.
+- **Two more order checks** (owner, 23/09): **same order, different amount** on the two sides
+  («Διαφορετικό ποσό: Orexsys 14,56 € · PointToOrder (TP-5Z) 14,00 €»), and **an online order
+  that never became an Orexsys order** — either the connector never brought it (no EFOM row) or
+  Orexsys rejected it (EFOM STATUS −1, no ORDMID). Both are shown without a button: the first is
+  a catalogue/price question, the second is the connector's — nothing the app should invent an
+  ORDM for. A platform order younger than 15 minutes is given the connector its time; copies of
+  till orders the loop guard rejected on purpose (tagged) are never reported. First live run on
+  the demo: 14 orders of 18–21/09 «never brought» — they predate the fresh STAVROS.FDB of 21/09 —
+  and 2 rejected (M6-2E, 32-5P) from before the EFST line existed.
+- **EFOM.ORDERID instead of the JSON** for the PointToOrder token of an order that arrived from
+  the platform. Found while building the above: `CAST(JSON AS VARCHAR(8000))` does not truncate
+  in Firebird — it raises «string right truncation» the moment an order's JSON is longer, which
+  would have broken the customer's orders window and the check for any shop with a big online
+  order. The connector fills `ORDERID` with the token, so no BLOB is read at all now.
 - **Automatic: «Παραγγελίες ταμείου → PointToOrder» switch on the home page.** Owner request
   22/09. `TillOrderSyncService` runs every 2 minutes while the app is open: every closed
   (STS 4), not cancelled till order — not one that came from the platform — placed since the
