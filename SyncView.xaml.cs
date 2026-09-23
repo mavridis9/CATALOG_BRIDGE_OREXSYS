@@ -109,7 +109,7 @@ namespace CatalogBridge
                 }
                 else
                 {
-                    await OrderCancel.CancelInOrexsysAsync(settings, m.OrdmId, $"Ακύρωση από Γέφυρα Καταλόγου — ακυρωμένη στο PointToOrder {m.Token} ({Environment.UserName})");
+                    await OrderCancel.CancelInOrexsysAsync(settings, m.OrdmId, $"Γέφυρα: ακυρωμένη στο P2O {m.Token}");
                     CustomerDirectory.Log($"mismatch: order {m.OrdmId} cancelled in Orexsys - was cancelled on PointToOrder ({m.Token})");
                 }
             }

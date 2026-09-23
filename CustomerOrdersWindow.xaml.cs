@@ -223,7 +223,7 @@ namespace CatalogBridge
             {
                 if (decision is CancelSide.OrexsysOnly or CancelSide.Both)
                 {
-                    string remarks = $"Ακύρωση από Γέφυρα Καταλόγου ({Environment.UserName})";
+                    string remarks = $"Γέφυρα Καταλόγου ({Environment.UserName})";
                     await OrderCancel.CancelInOrexsysAsync(settings, o.OrdmId, remarks);
                     didOrexsys = true;
                     CustomerDirectory.Log($"cancel: order {o.OrdmId} cancelled in Orexsys for CUSTID {customer.CustId}");

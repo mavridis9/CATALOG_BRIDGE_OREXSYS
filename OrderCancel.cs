@@ -33,13 +33,21 @@ namespace CatalogBridge
         // than deleting anything.
         public const int AdministratorUsrsId = 0;
 
+        // CANCELORDER's remarks parameter is VARCHAR(50) (seen live 23/09: "string right truncation,
+        // expected length 50, actual 200" at procedure line 51) - capped here so no caller can hit it.
+        public const int RemarksMaxLength = 50;
+
+        public static string FitRemarks(string remarks) =>
+            (remarks ?? "").Length <= RemarksMaxLength ? (remarks ?? "") : remarks![..RemarksMaxLength];
+
         public static void CancelInOrexsys(FbConnection connection, FbTransaction transaction, long ordmId, string remarks)
         {
+            remarks = FitRemarks(remarks);
             using var command = new FbCommand(
                 "EXECUTE PROCEDURE CANCELORDER(@Id, @Usr, @Remarks, NULL)", connection, transaction);
             command.Parameters.Add("@Id", FbDbType.BigInt).Value = ordmId;
             command.Parameters.Add("@Usr", FbDbType.Integer).Value = AdministratorUsrsId;
-            command.Parameters.Add("@Remarks", FbDbType.VarChar).Value = remarks;
+            command.Parameters.Add("@Remarks", FbDbType.VarChar, RemarksMaxLength).Value = remarks;
             command.ExecuteNonQuery();
         }
 

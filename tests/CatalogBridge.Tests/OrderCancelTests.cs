@@ -38,6 +38,15 @@ namespace CatalogBridge.Tests
             Assert.AreEqual(CancelSide.None, OrderCancel.Decide(true, "DELETED"));
         }
 
+        // CANCELORDER remarks = VARCHAR(50); a longer one blew up live on 23/09.
+        [TestMethod]
+        public void RemarksAreCappedAtWhatTheProcedureTakes()
+        {
+            Assert.AreEqual(50, OrderCancel.FitRemarks(new string('x', 200)).Length);
+            Assert.AreEqual("short", OrderCancel.FitRemarks("short"));
+            Assert.AreEqual("", OrderCancel.FitRemarks(null!));
+        }
+
         [TestMethod]
         public void UnknownPlatformStatus_IsTreatedAsActive() =>
             // "" = a token is known but its status could not be read - never assume cancelled.
