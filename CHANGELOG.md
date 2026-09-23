@@ -79,6 +79,15 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   Orexsys or PointToOrder is touched. A module not in the licence has its screens hidden. Sidebar
   shows «Άδεια: <πελάτης> · έως <ημερομηνία>»; the home page shows a red/amber banner when it is
   not fine. Issued with `tools/LicenceSigner` (owner's PC only; the signing key is not in the repo).
+- **«Ασυμφωνίες παραγγελιών» on Αρχική** (owner, 23/09). An order that exists on both sides but is
+  cancelled on one and still active on the other — e.g. an online order cancelled at the till that
+  still sits CLOSED in the customer's PointToOrder history. Checked at start and every 10 minutes
+  («Έλεγχος τώρα» too) over the last 30 days: Orexsys orders with a PointToOrder counterpart (token
+  from EFOM.JSON, the local send registry, or the «[OREXSYS#…]» comment tag) against one paged
+  `orders/search` on the platform. Each row names the order, the customer, the amount and the
+  problem, with one button — «Ακύρωση στο PointToOrder» or «Ακύρωση στο Orexsys» — that acts only
+  after confirmation, the same way the «Ακύρωση παραγγελίας» button does. Nothing is automatic.
+  First live run found #3 (87-5Z): cancelled on the platform on 22/09, still active in Orexsys.
 - **Automatic: «Παραγγελίες ταμείου → PointToOrder» switch on the home page.** Owner request
   22/09. `TillOrderSyncService` runs every 2 minutes while the app is open: every closed
   (STS 4), not cancelled till order — not one that came from the platform — placed since the

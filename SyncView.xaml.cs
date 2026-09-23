@@ -55,6 +55,74 @@ namespace CatalogBridge
             };
         }
 
+        // ---- order mismatches (owner, 23/09/2026) -------------------------------------------
+
+        // Wired by MainWindow, which owns the service.
+        public OrderMismatchService? Mismatches { get; set; }
+
+        public void ShowMismatches(List<Mismatch> found, string status)
+        {
+            MismatchList.ItemsSource = found;
+            MismatchStatusText.Text = status;
+            MismatchStatusText.Foreground = found.Count > 0 ? Bad : Normal;
+        }
+
+        private async void MismatchCheckButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (Mismatches == null) return;
+            MismatchCheckButton.IsEnabled = false;
+            MismatchStatusText.Text = "Έλεγχος...";
+            try { await Mismatches.RunNowAsync(); }
+            finally { MismatchCheckButton.IsEnabled = true; }
+        }
+
+        // The fix, on the user's word only: the side that is still active gets cancelled the
+        // same way the «Ακύρωση παραγγελίας» button does it (OrderCancel / TillOrderSender).
+        private async void MismatchFix_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is not Mismatch m) return;
+            if (License.Blocked(Module.Orders, out string why)) { ShowMismatches((List<Mismatch>)MismatchList.ItemsSource, why); return; }
+
+            bool onPlatform = m.Kind == MismatchKind.CancelledInOrexsysActiveOnPlatform;
+            var sure = MessageBox.Show(
+                $"{m.Title}\n{m.Problem}\n\n" +
+                (onPlatform
+                    ? $"Να ακυρωθεί και στο PointToOrder ({m.Token}); Θα φύγει από το ιστορικό του πελάτη."
+                    : "Να ακυρωθεί και στο Orexsys; Γίνεται όπως στο ταμείο: αντιστρέφονται τα είδη και οι πληρωμές και εκδίδεται " +
+                      "ακυρωτικό παραστατικό. ΔΕΝ αναιρείται.") +
+                "\n\nΣυνέχεια;",
+                m.Action, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            if (sure != MessageBoxResult.Yes) return;
+
+            Settings settings;
+            try { settings = Settings.Load(); }
+            catch (Exception ex) { MismatchStatusText.Text = "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message; return; }
+
+            MismatchStatusText.Text = $"Ακύρωση #{m.OrdmId}...";
+            try
+            {
+                if (onPlatform)
+                {
+                    using var api = new PointToOrderApiClient(settings);
+                    await TillOrderSender.CancelOnPlatformAsync(api, m.Uuid);
+                    CustomerDirectory.Log($"mismatch: order {m.OrdmId} cancelled on PointToOrder ({m.Token}) - was cancelled in Orexsys");
+                }
+                else
+                {
+                    await OrderCancel.CancelInOrexsysAsync(settings, m.OrdmId, $"Ακύρωση από Γέφυρα Καταλόγου — ακυρωμένη στο PointToOrder {m.Token} ({Environment.UserName})");
+                    CustomerDirectory.Log($"mismatch: order {m.OrdmId} cancelled in Orexsys - was cancelled on PointToOrder ({m.Token})");
+                }
+            }
+            catch (Exception ex)
+            {
+                CustomerDirectory.Log($"mismatch: order {m.OrdmId} FAILED - {ex.Message}");
+                MismatchStatusText.Text = $"Η ακύρωση της #{m.OrdmId} απέτυχε: {ex.Message}";
+                MismatchStatusText.Foreground = Bad;
+                return;
+            }
+            if (Mismatches != null) await Mismatches.RunNowAsync();
+        }
+
         // ---- till orders → PointToOrder, automatic ------------------------------------------
 
         // Wired by MainWindow, which owns the service so it keeps running on every screen.

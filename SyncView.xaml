@@ -53,6 +53,45 @@
                 </StackPanel>
             </Border>
 
+            <!-- Order mismatches: cancelled on one side, active on the other (owner, 23/09/2026) -->
+            <Border x:Name="MismatchCard" Style="{StaticResource Card}" Margin="0,20,0,0" MinWidth="520" MaxWidth="720" Padding="16">
+                <StackPanel>
+                    <Grid>
+                        <StackPanel>
+                            <TextBlock Text="Ασυμφωνίες παραγγελιών" FontSize="15" FontWeight="SemiBold"
+                                       Foreground="{StaticResource InkBrush}"/>
+                            <TextBlock x:Name="MismatchStatusText" Text="Έλεγχος..." FontSize="12.5" Margin="0,2,0,0"
+                                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" MaxWidth="440"/>
+                        </StackPanel>
+                        <Button x:Name="MismatchCheckButton" Content="Έλεγχος τώρα" Style="{StaticResource SecondaryButton}"
+                                HorizontalAlignment="Right" VerticalAlignment="Center" MinWidth="130"
+                                Click="MismatchCheckButton_Click"/>
+                    </Grid>
+                    <ItemsControl x:Name="MismatchList" Margin="0,10,0,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#F1D4CF" BorderThickness="0,1,0,0" Padding="0,10,0,10">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource InkBrush}" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding Problem}" FontSize="12.5" Margin="0,2,0,0"
+                                                       Foreground="#C42B1C" TextWrapping="Wrap"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="{Binding Action}" Style="{StaticResource SecondaryButton}"
+                                                VerticalAlignment="Center" MinWidth="170" Click="MismatchFix_Click"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
             <Border x:Name="ResultsCard" Style="{StaticResource Card}" Margin="0,20,0,0"
                     Visibility="Collapsed" MinWidth="520">
                 <ItemsControl x:Name="ResultsList">
