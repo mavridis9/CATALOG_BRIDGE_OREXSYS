@@ -116,6 +116,11 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   in Firebird — it raises «string right truncation» the moment an order's JSON is longer, which
   would have broken the customer's orders window and the check for any shop with a big online
   order. The connector fills `ORDERID` with the token, so no BLOB is read at all now.
+- **User guide rewritten** (29/09): `docs/guide/guide.html` → PDF through headless Edge (the
+  ΔΙΑΧΕΙΡΙΣΗ pipeline). 11 pages, 13 sections: licence, the home screen, catalogue sync, sizes,
+  customers, till orders ↔ PointToOrder, cancel in both, mismatches, settings, technician
+  screens, rules, files/backups/moving PC, troubleshooting. The technician PIN is no longer
+  printed in it. The 01/09 `.docx` is superseded and kept only as history.
 - **Automatic: «Παραγγελίες ταμείου → PointToOrder» switch on the home page.** Owner request
   22/09. `TillOrderSyncService` runs every 2 minutes while the app is open: every closed
   (STS 4), not cancelled till order — not one that came from the platform — placed since the
