@@ -254,3 +254,11 @@ git-ignored and excluded from publish. The sidebar shows the version.
   never from the platform's history; the platform-native token comes from `EFOM.JSON
   orderDetails.orderNumber` (substring scan — the SQL CAST can truncate the JSON). Cancelled
   Orexsys orders are now SHOWN in the list (status «Ακυρωμένη») but still excluded from the totals.
+- **A price list per category (1.1.2, 29/09).** `Settings.CategoryPriceLists` ("ITMCID=PRLSID,…",
+  only where ≠ `PriceListId`), `PriceListFor(itmcId)`, `PriceListsInUse()`. `OrexsysCatalog` no
+  longer joins PRLD on one list: it reads PRLD for every list in use into a (list, item, size)
+  map and prices each product/size from its category's list (ITMVID 0 row not asked for
+  ISACTIVE, size rows must be active - unchanged rules). `OrexsysCategories` returns the priced
+  count per list; `CategoryPickerWindow.InitialPriceList` = saved → default if priced there →
+  the list it is priced in. STOA: list 1 ΚΑΛΑΜΑΚΙ, list 2 ΣΤΟΑ; ΠΙΑΤΑ ΗΜΕΡΑΣ (94) and ΔΙΑΦΟΡΑ
+  have no price in either. Any new price read must go through `PriceListFor`, never `PriceListId`.

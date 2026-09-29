@@ -3,6 +3,21 @@
 All notable changes to CatalogBridge (Γέφυρα Καταλόγου). Versions are semantic; each
 released version is a git tag `vX.Y.Z` on `master` with the exe attached to the GitHub Release.
 
+## [1.1.2] — 2026-09-29
+
+- **A price list per category** (owner, 29/09, at STOA — one Orexsys, two businesses: ΚΑΛΑΜΑΚΙ
+  priced in list 1, ΣΤΟΑ in list 2). Ρυθμίσεις → «Κατηγορίες προς συγχρονισμό»: next to every
+  category a «Τιμοκατάλογος» choice, each option saying how many of the category's products are
+  priced there («ΣΤΟΑ · 12 με τιμή»). A category opens on the list saved for it, else on the
+  default list if it has prices there, else on the list it IS priced in — so nothing has to be
+  guessed. Saved as `CategoryPriceLists=ITMCID=PRLSID,…` (only where it differs from the default
+  «Τιμοκατάλογος», which stays as the fallback); the price COLUMN remains one for the
+  installation. `OrexsysCatalog` reads every list in use once and takes each product's (and each
+  size's) price from its category's list, so Συγχρονισμός, Αποστολή, Πίνακας ελέγχου and the
+  unpriced warning all follow. Verified read-only on a copy of STOA.FDB: 88 priced products
+  with list 1 alone, 212 with a list per category; 15 categories open on «ΣΤΟΑ» by themselves.
+- Built from branch `sizes`, not tagged: handed to the client as `deploy\Gefyra_Katalogou_1.1.2`.
+
 ## [1.1.1] — 2026-09-15
 
 - **EFIC rows now carry `SALESNAME`** (= `NAME`, the platform name), matching a row Orexsys

@@ -102,6 +102,7 @@ namespace CatalogBridge
 
             syncAllCategories = settings.SyncAllCategories;
             syncCategoryIds = Settings.ParseIdSet(settings.SyncCategoryIds);
+            categoryPriceLists = Settings.ParsePriceListMap(settings.CategoryPriceLists);
             UpdateCategorySummary();
             ShowDashboardCheck.IsChecked = settings.ShowDashboard;
             ShowCompareCheck.IsChecked = settings.ShowCompare;
@@ -148,6 +149,7 @@ namespace CatalogBridge
             SizeMode = (SizeModeCombo.SelectedItem as SizeModeOption)?.Value ?? SizeMode.SeparateItems,
             SyncAllCategories = syncAllCategories,
             SyncCategoryIds = string.Join(",", syncCategoryIds.OrderBy(id => id)),
+            CategoryPriceLists = Settings.FormatPriceListMap(categoryPriceLists),
             ShowDashboard = ShowDashboardCheck.IsChecked == true,
             ShowCompare = ShowCompareCheck.IsChecked == true,
             ShowPush = ShowPushCheck.IsChecked == true,
@@ -304,6 +306,7 @@ namespace CatalogBridge
         // The category choice lives here until Αποθήκευση, like every other field on the form.
         private bool syncAllCategories = true;
         private HashSet<long> syncCategoryIds = new();
+        private Dictionary<long, long> categoryPriceLists = new();   // category → price list, where not the default
 
         private void ChooseCategoriesButton_Click(object sender, RoutedEventArgs e)
         {
@@ -314,7 +317,7 @@ namespace CatalogBridge
                 return;
             }
 
-            var picker = new CategoryPickerWindow(settings, syncAllCategories, syncCategoryIds)
+            var picker = new CategoryPickerWindow(settings, syncAllCategories, syncCategoryIds, categoryPriceLists)
             {
                 Owner = this,
             };
@@ -322,6 +325,7 @@ namespace CatalogBridge
 
             syncAllCategories = picker.AllSelected;
             syncCategoryIds = picker.SelectedIds;
+            categoryPriceLists = picker.PriceLists;
             UpdateCategorySummary();
         }
 
@@ -331,6 +335,8 @@ namespace CatalogBridge
                 syncAllCategories ? "Όλες (και όσες προστεθούν αργότερα)" :
                 syncCategoryIds.Count == 0 ? "Καμία — ο Συγχρονισμός δεν στέλνει νέα προϊόντα" :
                 $"{syncCategoryIds.Count} επιλεγμένες";
+            if (categoryPriceLists.Count > 0)
+                CategorySummaryText.Text += $" · {categoryPriceLists.Count} με δικό τους τιμοκατάλογο";
         }
 
         private void BrowseButton_Click(object sender, RoutedEventArgs e)

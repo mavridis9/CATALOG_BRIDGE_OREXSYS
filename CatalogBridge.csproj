@@ -10,7 +10,7 @@
 
     <!-- The released version. Bump here, record it in CHANGELOG.md, then scripts/release.ps1
          refuses to tag unless the three agree. Shown in the sidebar. -->
-    <Version>1.1.1</Version>
+    <Version>1.1.2</Version>
     <Product>Γέφυρα Καταλόγου</Product>
     <Company>Orexsys</Company>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>

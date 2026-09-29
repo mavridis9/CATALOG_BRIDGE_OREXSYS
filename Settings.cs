@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -61,6 +62,12 @@ namespace CatalogBridge
         public bool SyncAllCategories { get; init; } = true;
         public string SyncCategoryIds { get; init; } = "";
 
+        // A price list per category (owner, 29/09/2026 - STOA serves two businesses from one
+        // database, each priced in its own list): "ITMCID=PRLSID,..." e.g. "8=1,21=2". A category
+        // that is not listed uses PriceListId. Only the list differs; the price COLUMN
+        // (Delivery / Take away / Καταστήματος) stays one for the whole installation.
+        public string CategoryPriceLists { get; init; } = "";
+
         // How a product with sizes (PRLD rows per ITMVID) is sent to PointToOrder — owner
         // decision 11/09/2026, both must exist:
         //  SeparateItems: one offer per size («ΤΟΣΤ», «ΤΟΣΤ XL»), each with its own offerId and
@@ -82,6 +89,37 @@ namespace CatalogBridge
         public DateTime TillOrderSyncSince { get; set; } = DateTime.Today;
 
         private HashSet<long>? syncCategories;
+        private Dictionary<long, long>? categoryPriceLists;
+
+        public long PriceListFor(long itmcId)
+        {
+            categoryPriceLists ??= ParsePriceListMap(CategoryPriceLists);
+            return categoryPriceLists.TryGetValue(itmcId, out long list) ? list : PriceListId;
+        }
+
+        // Every list the catalogue has to read: the default one and each one a category names.
+        public IReadOnlyCollection<long> PriceListsInUse()
+        {
+            categoryPriceLists ??= ParsePriceListMap(CategoryPriceLists);
+            var ids = new HashSet<long>(categoryPriceLists.Values) { PriceListId };
+            return ids;
+        }
+
+        public static Dictionary<long, long> ParsePriceListMap(string value)
+        {
+            var map = new Dictionary<long, long>();
+            foreach (string part in (value ?? "").Split(','))
+            {
+                string[] pair = part.Split('=');
+                if (pair.Length == 2 && long.TryParse(pair[0].Trim(), out long category) && category > 0 &&
+                    long.TryParse(pair[1].Trim(), out long list) && list > 0)
+                    map[category] = list;
+            }
+            return map;
+        }
+
+        public static string FormatPriceListMap(IEnumerable<KeyValuePair<long, long>> map) =>
+            string.Join(",", map.OrderBy(p => p.Key).Select(p => p.Key + "=" + p.Value));
 
         public bool IncludesCategory(long itmcId)
         {
@@ -160,6 +198,7 @@ namespace CatalogBridge
                 StockSyncEnabled = Get("StockSyncEnabled", "false") == "true",
                 SyncAllCategories = Get("SyncAllCategories", "true") != "false",
                 SyncCategoryIds = Get("SyncCategoryIds", ""),
+                CategoryPriceLists = Get("CategoryPriceLists", ""),
                 EmailOrderCorrelation = Get("EmailOrderCorrelation", "false") == "true",
                 TillOrderSyncEnabled = Get("TillOrderSyncEnabled", "false") == "true",
                 TillOrderSyncSince = DateTime.TryParseExact(Get("TillOrderSyncSince", ""), "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var since) ? since : DateTime.Today,
@@ -211,6 +250,7 @@ namespace CatalogBridge
                 "; και όσες προστεθούν αργότερα. Ορίζονται από τις Ρυθμίσεις της εφαρμογής.",
                 $"SyncAllCategories={(settings.SyncAllCategories ? "true" : "false")}",
                 $"SyncCategoryIds={settings.SyncCategoryIds}",
+                $"CategoryPriceLists={settings.CategoryPriceLists}",
                 "",
                 "; Προϊόντα με μεγέθη (ITMV): SeparateItems = ένα προϊόν P2O ανά μέγεθος,",
                 "; OptionGroup = ένα προϊόν με ομάδα επιλογών μεγέθους (το ταμείο δεν παίρνει μέγεθος).",

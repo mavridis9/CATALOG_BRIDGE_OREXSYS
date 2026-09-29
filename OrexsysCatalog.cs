@@ -125,18 +125,28 @@ namespace CatalogBridge
             // carry SQL through this interpolation.
             string priceColumn = settings.PriceColumn;
 
-            string sql = $@"
-                SELECT i.ITMSID, i.CODE, i.NAME, i.ISACTIVE, i.ITMCID, c.NAME AS CATNAME,
-                       c.ISEXTRA, p.{priceColumn} AS PRICE
+            // Prices: each category reads its OWN price list (Settings.PriceListFor - owner,
+            // 29/09/2026; STOA prices two businesses in two lists). Every list in use is read
+            // once, keyed by (list, product, size); the ids are numbers from settings, never text.
+            var prices = new Dictionary<(long List, long Item, long Size), (decimal? Price, bool Active)>();
+            string lists = string.Join(",", settings.PriceListsInUse());
+            using (var command = new FbCommand(
+                $"SELECT PRLSID, ITMSID, ITMVID, {priceColumn} AS PRICE, ISACTIVE FROM PRLD WHERE PRLSID IN ({lists})", connection))
+            using (var reader = command.ExecuteReader())
+            {
+                while (reader.Read())
+                    prices[(Convert.ToInt64(reader["PRLSID"]), Convert.ToInt64(reader["ITMSID"]), Convert.ToInt64(reader["ITMVID"]))] =
+                        (reader["PRICE"] == DBNull.Value ? null : Convert.ToDecimal(reader["PRICE"]), ReadBool(reader, "ISACTIVE"));
+            }
+
+            string sql = @"
+                SELECT i.ITMSID, i.CODE, i.NAME, i.ISACTIVE, i.ITMCID, c.NAME AS CATNAME, c.ISEXTRA
                 FROM ITMS i
                 LEFT JOIN ITMC c ON c.ITMCID = i.ITMCID
-                LEFT JOIN PRLD p ON p.ITMSID = i.ITMSID AND p.PRLSID = @prlsid AND p.ITMVID = 0
                 ORDER BY c.NAME, i.NAME";
 
             using (var command = new FbCommand(sql, connection))
             {
-                command.Parameters.AddWithValue("@prlsid", settings.PriceListId);
-
                 using var reader = command.ExecuteReader();
                 while (reader.Read())
                 {
@@ -150,9 +160,10 @@ namespace CatalogBridge
                         CategoryName = ReadString(reader, "CATNAME"),
                         IsActive = ReadBool(reader, "ISACTIVE"),
                         IsExtra = ReadBool(reader, "ISEXTRA"),
-                        Price = reader["PRICE"] == DBNull.Value
-                            ? null : Convert.ToDecimal(reader["PRICE"]),
                     };
+                    // ITMVID 0 = the product's own price; as before, its ISACTIVE is not asked.
+                    product.Price = prices.TryGetValue((settings.PriceListFor(product.CategoryId), product.ItmsId, 0), out var own)
+                        ? own.Price : null;
 
                     snapshot.Products.Add(product);
                     byItmsId[product.ItmsId] = product;
@@ -162,11 +173,8 @@ namespace CatalogBridge
             // Sizes, the way GETITMSIZES decides them: any active PRLD row with ITMVID <> 0, in
             // ANY price list - the till asks for a size whichever list is in use. The price shown
             // is the configured list's, and only if that row is active there.
-            string sizesSql = $@"
-                SELECT s.ITMSID, s.ITMVID, v.NAME AS SIZENAME,
-                       (SELECT q.{priceColumn} FROM PRLD q
-                         WHERE q.PRLSID = @prlsid AND q.ITMSID = s.ITMSID
-                           AND q.ITMVID = s.ITMVID AND q.ISACTIVE = 1) AS PRICE
+            string sizesSql = @"
+                SELECT s.ITMSID, s.ITMVID, v.NAME AS SIZENAME
                 FROM (SELECT DISTINCT ITMSID, ITMVID FROM PRLD
                        WHERE ITMVID <> 0 AND ISACTIVE = 1) s
                 LEFT JOIN ITMV v ON v.ITMVID = s.ITMVID
@@ -174,8 +182,6 @@ namespace CatalogBridge
 
             using (var command = new FbCommand(sizesSql, connection))
             {
-                command.Parameters.AddWithValue("@prlsid", settings.PriceListId);
-
                 using var reader = command.ExecuteReader();
                 while (reader.Read())
                 {
@@ -187,7 +193,8 @@ namespace CatalogBridge
                     product.Sizes.Add(new OrexsysSize(
                         itmvId,
                         name.Length > 0 ? name : $"μέγεθος {itmvId}",
-                        reader["PRICE"] == DBNull.Value ? null : Convert.ToDecimal(reader["PRICE"])));
+                        prices.TryGetValue((settings.PriceListFor(product.CategoryId), product.ItmsId, itmvId), out var size) && size.Active
+                            ? size.Price : null));
                 }
             }
 
