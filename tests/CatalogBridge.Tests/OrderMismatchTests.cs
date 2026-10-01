@@ -232,6 +232,30 @@ namespace CatalogBridge.Tests
                 new[] { P("C1", "CANCELLED", created: D.AddHours(-3)), new PlatformOrderSide("u", "", "DRAFT", "", 0, "", 4m, D.AddHours(-3)) },
                 NoEfom).Count);
 
+        // Since the shop decides (01/10): a platform order the shop REJECTED is not «missing» in
+        // Orexsys - it was never meant to be there; and one still SUBMITTED is waiting for the
+        // shop, which the «Online παραγγελίες» board shows - not a mismatch either.
+        [TestMethod]
+        public void RejectedPlatformOrder_IsNeverMissing() =>
+            Assert.AreEqual(0, Cmp(Array.Empty<OrexsysOrderSide>(), NoRegistry,
+                new[] { P("R1-11", "REJECTED", created: D.AddHours(-3).ToUniversalTime()) },
+                new[] { new EfomEntry("R1-11", null, -1) }).Count);
+
+        [TestMethod]
+        public void PlatformOrderStillWaitingForTheShop_IsNotMissing() =>
+            Assert.AreEqual(0, Cmp(Array.Empty<OrexsysOrderSide>(), NoRegistry,
+                new[] { P("W1-11", "SUBMITTED", created: D.AddHours(-3).ToUniversalTime()), P("W2-22", "SUBMITTED", created: D.AddHours(-3).ToUniversalTime()) },
+                new[] { new EfomEntry("W1-11", null, 1) }).Count);
+
+        [TestMethod]
+        public void AcceptedOnThePlatformButStillWaitingAtTheTill_SaysSo()
+        {
+            var found = Cmp(Array.Empty<OrexsysOrderSide>(), NoRegistry,
+                new[] { P("S1-11", "CLOSED", created: D.AddHours(-3).ToUniversalTime()) },
+                new[] { new EfomEntry("S1-11", null, 1) });
+            StringAssert.Contains(found.Single().Short, "περιμένει ακόμα στο ταμείο");
+        }
+
         [TestMethod]
         public void ACancelledOrexsysOrderWithZeroTotal_ShowsThePlatformTotal()
         {

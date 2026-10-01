@@ -244,7 +244,44 @@ Smoke run 15:20 on 1110: order **N2-ZY** placed with the switch on → connector
 STATUS 1 within 7 s → board row «N2-ZY · ΜΑΡΙΑ Κ. · 4,00 € · Παραλαβή, το συντομότερο — Στο
 ταμείο · 0′». The accept-at-the-till → CLOSED leg is the owner's to press (result below).
 
-## 10. Test harness
+## 10. Final: the decision is made in the tool, on both sides (01/10 evening)
+
+Owner: *«no — we accept the order inside the tool. Then we fix why an order that is not
+accepted is still placed inside Orexsys.»* So the board got its buttons back, and each button
+does the till's own update as well as the platform's:
+
+| Button | Orexsys (connector row) | PointToOrder | Customer |
+|---|---|---|---|
+| **Αποδοχή** with *n′* | `UPDATE EFOM SET STATUS = 2, ACCEPTMIN = n WHERE EFOMID = @id AND STATUS = 1` — the till's accept; the vendor trigger raises the till order | `CLOSED` + `estimatedTime = now + n` | «δεκτή, έτοιμη στις …» |
+| **Απόρριψη** + reason | `STATUS = -1` (same guard) — nobody at the till can raise it | `REJECTED` + the reason | the reason |
+| the till's own screen answers first | (already 2 / −1) | the mirror of §9 tells the platform | likewise |
+
+Order of operations: **Orexsys first, then the platform.** If the till refuses (row already
+answered, guard fails) nothing is told to the customer. If the platform call fails after the
+till changed, the status line says so and the §9 mirror retries on a later tick (the row is 2
+/ −1 by then). Αποδοχή is enabled only while the row is at the till and waiting
+(`OrderMirror.CanAcceptHere`); until the connector brings it the button is grey with a tooltip.
+Απόρριψη always works: with the row present it is voided first; without it the platform is told
+and the service voids the row on arrival.
+
+**The fix for «not accepted, yet placed in Orexsys»** (`OrderMirror.ShouldVoidAtTill`, run by
+the service for every waiting row the SUBMITTED list does not explain): a row at `STATUS 1`
+whose platform order is `REJECTED` / `CANCELLED` / `DELETED` is set to −1. The relay always
+delivers (§6); this makes sure a refused order never sits on the till's screen waiting to be
+raised by mistake. Rows the till already raised (2) are not touched — the «Ασυμφωνίες» card
+shows those.
+
+Live, 1110 / Stavros.FDB, 15:35: **XE-9K** accepted with 15′ → EFOM 48 status 2, **ORDM 59**
+raised by the vendor trigger (4,00 €, 15:35:58), platform `CLOSED`, `estimatedTime` 15:50;
+**N2-ZY** rejected → EFOM 47 status −1, platform `REJECTED` with the sentence. Both through
+`OrderMirror.AcceptAtTillAsync` / `RejectAtTillAsync`, the calls behind the buttons.
+
+Open: why did the 30/09 rows get `STATUS 2` in the same second they arrived, while every row of
+01/10 waits at 1? The connector's log is identical on both days and `USRSID` is 0 on all of them.
+The connector's ini (`DSTS=1`, modified 01/10 10:49) is the likely switch — owner to confirm. With
+the rows waiting, the race that placed unaccepted orders is gone; the void rule covers the rest.
+
+## 11. Test harness
 
 `scratchpad/AcceptTest` (not in the repo; the same calls are in `OrderAcceptance.cs`): modes
 `settings`, `off|on`, `order [name]`, `status <uuid>`, `setstatus <uuid> <STATUS>`,

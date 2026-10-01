@@ -5,7 +5,16 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
 
 ## [1.1.3] — 2026-10-01 (branch `sizes`, not tagged)
 
-- **Online παραγγελίες: the till decides, the app mirrors** (owner, 01/10 afternoon, replacing
+- **Online παραγγελίες: decided in the tool, applied to both sides** (owner, 01/10 evening,
+  final). Every waiting order has a minutes picker, **Αποδοχή** and **Απόρριψη**. Αποδοχή does
+  what the till's accept screen does — the connector's EFOM row goes to status 2 with the minutes
+  and Orexsys raises the till order — then tells PointToOrder (`CLOSED` + ready time). Απόρριψη
+  voids the row (−1) so it is never raised, then tells PointToOrder (`REJECTED` + the reason).
+  Orexsys first, platform second, each guarded by `STATUS = 1`. The service also voids any waiting
+  row whose platform order is already rejected or cancelled (the «not accepted, yet placed»
+  fix), and the mirror of the till's own screen stays. Live on 1110: XE-9K → ORDM 59 + CLOSED
+  15′; N2-ZY → −1 + REJECTED. `docs/ORDER_ACCEPTANCE.md` §10. 145 tests.
+- *(superseded the same evening)* **Online παραγγελίες: the till decides, the app mirrors** (owner, 01/10 afternoon, replacing
   the buttons below the same day). The till's own «online orders» screen accepts (with minutes)
   or rejects; `OrderMirror` reads the connector's EFOM rows and tells PointToOrder — `CLOSED` +
   `estimatedTime`, or `REJECTED` with a fixed sentence — only while the order is still

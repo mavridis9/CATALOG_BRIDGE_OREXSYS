@@ -23,7 +23,11 @@ namespace CatalogBridge
 
     public sealed record PlatformOrderSide(string Uuid, string Token, string Status, string Comment, long CustomerUserId, string Customer, decimal Total, DateTime CreatedAt)
     {
-        public bool Cancelled => Status is "CANCELLED" or "DELETED";
+        // REJECTED counts as cancelled: the shop said no (01/10), so it must not be active anywhere.
+        public bool Cancelled => Status is "CANCELLED" or "DELETED" or "REJECTED";
+
+        // Still waiting for the shop's answer (auto-accept off): the online-orders board's business.
+        public bool AwaitingShop => Status is "SUBMITTED" or "RECEIVED";
         public bool Draft => Status == "DRAFT" || Token.Length == 0;
     }
 
@@ -163,14 +167,16 @@ namespace CatalogBridge
 
             foreach (var p in platformList)
             {
-                if (p.Draft || p.Cancelled || claimed.Contains(p.Token)) continue;
+                if (p.Draft || p.Cancelled || p.AwaitingShop || claimed.Contains(p.Token)) continue;
                 if (TaggedOrdmId(p) != null) continue;                       // our own copy of a till order
                 if (now - p.CreatedAt < ConnectorSlack) continue;             // give the connector its time
                 efomByToken.TryGetValue(p.Token, out var e);
                 if (e != null && e.OrdmId is > 0) continue;                   // it IS in Orexsys - just not in this window / customer
                 string detail = e == null
                     ? "δεν την κατέβασε ποτέ ο connector (καμία γραμμή EFOM)"
-                    : $"το Orexsys την απέρριψε (EFOM STATUS {e.Status}, χωρίς παραγγελία)";
+                    : e.Status == 1
+                        ? "περιμένει ακόμα στο ταμείο (EFOM STATUS 1) ενώ το PointToOrder τη θεωρεί δεκτή"
+                        : $"το Orexsys την απέρριψε (EFOM STATUS {e.Status}, χωρίς παραγγελία)";
                 result.Add(new Mismatch(MismatchKind.PlatformOrderMissingInOrexsys, 0, p.CreatedAt.ToLocalTime(), p.Customer, p.Total, p.Token, p.Uuid, detail));
             }
             return result.OrderByDescending(m => m.When).ToList();

@@ -292,3 +292,12 @@ git-ignored and excluded from publish. The sidebar shows the version.
   is never written). The home card is a status board with no buttons; `WaitingRow` updates rows in
   place; `Motion.cs` holds the app's motion rules (200 ms ease-out, 0.97 press, zero when Windows
   animations are off). Register `mirrored_orders.txt` next to the exe = today's tally.
+  **Then (same evening, final):** the buttons came back and act on BOTH sides. Αποδοχή =
+  `OrderMirror.AcceptAtTillAsync` (`UPDATE EFOM SET STATUS = 2, ACCEPTMIN = n WHERE EFOMID = @id
+  AND STATUS = 1`, exact row count — the till's own path; the vendor trigger raises the ORDM) then
+  platform `CLOSED` + `estimatedTime`; Απόρριψη = `RejectAtTillAsync` (−1, same guard) then
+  `REJECTED` + reason. Orexsys first, platform second. The service voids (−1) any waiting row whose
+  platform order is REJECTED/CANCELLED/DELETED (`ShouldVoidAtTill`). Rule 5's Orexsys write surface
+  now includes **`EFOM.STATUS`/`ACCEPTMIN` on the connector's own row, only from 1** — nothing else.
+  Verified live 01/10 15:35 (XE-9K → ORDM 59; N2-ZY → −1). Why 30/09 rows auto-went to 2 is still
+  the owner's to confirm (connector ini `DSTS=1` changed 01/10 10:49 is the suspect).
