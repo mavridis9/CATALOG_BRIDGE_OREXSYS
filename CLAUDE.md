@@ -262,3 +262,16 @@ git-ignored and excluded from publish. The sidebar shows the version.
   count per list; `CategoryPickerWindow.InitialPriceList` = saved → default if priced there →
   the list it is priced in. STOA: list 1 ΚΑΛΑΜΑΚΙ, list 2 ΣΤΟΑ; ΠΙΑΤΑ ΗΜΕΡΑΣ (94) and ΔΙΑΦΟΡΑ
   have no price in either. Any new price read must go through `PriceListFor`, never `PriceListId`.
+- **Αποδοχή παραγγελιών από το ταμείο (1.1.3, 01/10).** Full record in `docs/ORDER_ACCEPTANCE.md`
+  — read it before touching this. Mechanism A of three: store setting `AUTO_ACCEPT_ORDERS=false`
+  (`PUT /api/v1/stores/{id}/settings [{key,value}]`, flipped by the Αρχική switch, platform first)
+  → orders stay `SUBMITTED`; accept = admin `PUT status CLOSED` (NOT `RECEIVED`, which the admin
+  screen still shows as «Open»); reject = `REJECTED` + `rejectReason` (≤1024). Waiting list =
+  `orders/search {status:[SUBMITTED]}`; change detection = `GET orders/last-updates/ORDER` every
+  10 s (the admin screen polls it every 2 s). Validation/submission webhooks («Custom Integration»
+  in the admin UI) need a public HTTPS URL — not used. The real connector is
+  `C:\Orexsys\extOrderClientAPIapp\…\extOrderClientAPIapp.exe` (relay poll every 10 s; its ini
+  `[DB] Server=` must reach the database); **still unverified: that PointToOrder pushes a manually
+  accepted (CLOSED) order to the Twinsoft relay** — tokens 96-54 / 97-TN / 34-TX are the probe.
+  Rule 5's PointToOrder write surface now includes the store setting and order status
+  CLOSED/REJECTED. Never leave the switch on for a shop whose app is closed: nobody accepts.

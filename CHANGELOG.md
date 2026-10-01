@@ -3,6 +3,23 @@
 All notable changes to CatalogBridge (Γέφυρα Καταλόγου). Versions are semantic; each
 released version is a git tag `vX.Y.Z` on `master` with the exe attached to the GitHub Release.
 
+## [1.1.3] — 2026-10-01 (branch `sizes`, not tagged)
+
+- **Αποδοχή παραγγελιών από το ταμείο** (owner, 01/10). A new top card on Αρχική with a switch:
+  on, PointToOrder stops accepting online orders by itself (`AUTO_ACCEPT_ORDERS=false`, set on
+  the platform by the app, read back as proof) and every submitted order appears here within
+  10 s — token, customer, total, pickup/delivery and when, the items with their options, the
+  comment — with **Αποδοχή** (status `CLOSED`, what auto-accept and the admin «Confirm» produce)
+  and **Απόρριψη** (status `REJECTED` + a reason the customer reads, from an editable list). A
+  new order plays the system sound and raises the window. Off restores the platform setting.
+  Polling = `GET orders/last-updates/ORDER` every 10 s, `orders/search {status:[SUBMITTED]}`
+  only when it moved. `OrderAcceptance` (pure + calls), `OrderAcceptanceService`,
+  `RejectReasonWindow`, `Settings.OrderAcceptanceEnabled`; 10 tests (134). Verified live on
+  1110 (orders 96-54, M3-93, 97-TN, 34-TX), store left as found. **Open:** whether PointToOrder
+  pushes a manually accepted order to the Twinsoft relay (the connector could not reach its
+  database that day) — `docs/ORDER_ACCEPTANCE.md` §3 says exactly what to check. Use on 1110
+  only until then.
+
 ## [1.1.2] — 2026-09-29
 
 - **A price list per category** (owner, 29/09, at STOA — one Orexsys, two businesses: ΚΑΛΑΜΑΚΙ

@@ -88,6 +88,10 @@ namespace CatalogBridge
         public bool TillOrderSyncEnabled { get; set; }
         public DateTime TillOrderSyncSince { get; set; } = DateTime.Today;
 
+        // Online orders wait on PointToOrder until the shop accepts/rejects them here
+        // (OrderAcceptanceService; the switch on Αρχική also flips the store's AUTO_ACCEPT_ORDERS).
+        public bool OrderAcceptanceEnabled { get; set; }
+
         private HashSet<long>? syncCategories;
         private Dictionary<long, long>? categoryPriceLists;
 
@@ -202,6 +206,7 @@ namespace CatalogBridge
                 EmailOrderCorrelation = Get("EmailOrderCorrelation", "false") == "true",
                 TillOrderSyncEnabled = Get("TillOrderSyncEnabled", "false") == "true",
                 TillOrderSyncSince = DateTime.TryParseExact(Get("TillOrderSyncSince", ""), "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var since) ? since : DateTime.Today,
+                OrderAcceptanceEnabled = Get("OrderAcceptanceEnabled", "false") == "true",
                 SizeMode = Enum.TryParse(Get("SizeMode", "SeparateItems"), true, out SizeMode sm)
                     ? sm : SizeMode.SeparateItems,
                 ShowDashboard = Get("ShowDashboard", "false") == "true",
@@ -261,6 +266,9 @@ namespace CatalogBridge
                 "; Αυτόματη αποστολή των παραγγελιών ταμείου στο PointToOrder (κουμπί στην Αρχική), από την ημερομηνία.",
                 $"TillOrderSyncEnabled={(settings.TillOrderSyncEnabled ? "true" : "false")}",
                 $"TillOrderSyncSince={settings.TillOrderSyncSince:yyyy-MM-dd}",
+                "; Αποδοχή/απόρριψη των online παραγγελιών από το ταμείο (κουμπί στην Αρχική).",
+                "; true = το PointToOrder ΔΕΝ αποδέχεται μόνο του (AUTO_ACCEPT_ORDERS=false στο κατάστημα).",
+                $"OrderAcceptanceEnabled={(settings.OrderAcceptanceEnabled ? "true" : "false")}",
                 "",
                 "; Οθόνες τεχνικού (true = εμφανίζονται στο πλάι).",
                 $"ShowDashboard={(settings.ShowDashboard ? "true" : "false")}",

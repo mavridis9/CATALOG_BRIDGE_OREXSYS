@@ -148,6 +148,139 @@ namespace CatalogBridge
             if (Mismatches != null) await Mismatches.RunNowAsync();
         }
 
+        // ---- online orders accepted / rejected from the till (owner, 01/10/2026) ------------
+
+        // Wired by MainWindow, which owns the service so it keeps watching on every screen.
+        public OrderAcceptanceService? Acceptance { get; set; }
+
+        private List<PendingOrder> pending = new();
+
+        public void ShowAcceptanceState(Settings settings)
+        {
+            bool on = settings.OrderAcceptanceEnabled;
+            AcceptanceButton.Content = on ? "Απενεργοποίηση" : "Ενεργοποίηση";
+            AcceptanceDot.Background = on && License.CanWrite(Module.Orders) ? DotOn : DotOff;
+            AcceptanceStateText.Text = on
+                ? "Ενεργό: κάθε online παραγγελία περιμένει στο PointToOrder μέχρι να πατήσετε «Αποδοχή» ή «Απόρριψη» εδώ. " +
+                  "Όσο το πρόγραμμα είναι κλειστό, οι παραγγελίες περιμένουν — κανείς δεν τις δέχεται."
+                : "Ανενεργό: το PointToOrder δέχεται κάθε παραγγελία μόνο του, όπως πάντα.";
+            if (!on)
+            {
+                pending = new();
+                PendingList.ItemsSource = null;
+                PendingList.Visibility = Visibility.Collapsed;
+                AcceptanceStatusText.Text = "";
+            }
+        }
+
+        public void ShowPending(List<PendingOrder> orders, string status, List<PendingOrder> added)
+        {
+            pending = orders;
+            PendingList.ItemsSource = orders;
+            PendingList.Visibility = orders.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            AcceptanceStatusText.Text = status;
+            bool error = status.Contains("σφάλμα") || status.Contains("ΣΤΑΜΑΤΗΜΕΝΟ");
+            AcceptanceStatusText.Foreground = error ? Bad : orders.Count > 0 ? Warn : Normal;
+            AcceptanceDot.Background = error ? DotBad : orders.Count > 0 ? DotWait : Acceptance?.IsRunning == true ? DotOn : DotOff;
+            if (added.Count > 0)
+            {
+                // The till must hear it: a new order is money waiting for a click.
+                try { System.Media.SystemSounds.Exclamation.Play(); } catch { }
+                Window.GetWindow(this)?.Activate();
+            }
+        }
+
+        private static readonly Brush DotWait = new SolidColorBrush(Color.FromRgb(0xB4, 0x53, 0x09));
+
+        private async void AcceptanceButton_Click(object sender, RoutedEventArgs e)
+        {
+            Settings settings;
+            try { settings = Settings.Load(); }
+            catch (Exception ex) { ShowStatus("Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message, Bad); return; }
+
+            bool turningOn = !settings.OrderAcceptanceEnabled;
+            if (turningOn)
+            {
+                if (License.Blocked(Module.Orders, out string why)) { ShowStatus(why, Bad); return; }
+                if (!settings.IsApiConfigured)
+                {
+                    ShowStatus("Το πρόγραμμα δεν έχει ρυθμιστεί ακόμα — ανοίξτε τις Ρυθμίσεις (κάτω αριστερά).", Warn);
+                    return;
+                }
+                var sure = MessageBox.Show(
+                    "Να περιμένει κάθε online παραγγελία την έγκριση του ταμείου;\n\n" +
+                    "Το PointToOrder θα σταματήσει να δέχεται παραγγελίες μόνο του. Κάθε νέα παραγγελία θα εμφανίζεται εδώ, " +
+                    "με ήχο, και θα περιμένει «Αποδοχή» ή «Απόρριψη» (με αιτιολογία που βλέπει ο πελάτης).\n\n" +
+                    "ΠΡΟΣΟΧΗ: όσο αυτό το πρόγραμμα είναι κλειστό, οι παραγγελίες μένουν σε αναμονή στο PointToOrder και " +
+                    "κανείς δεν τις δέχεται. Απενεργοποιήστε το πριν κλείσετε για πολύ.\n\nΣυνέχεια;",
+                    "Αποδοχή παραγγελιών από το ταμείο", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+                if (sure != MessageBoxResult.Yes) return;
+            }
+
+            // The platform first: if its setting does not change, nothing changes here either.
+            AcceptanceButton.IsEnabled = false;
+            try
+            {
+                using var api = new PointToOrderApiClient(settings);
+                await OrderAcceptance.SetPlatformAutoAcceptAsync(api, turningOn);
+            }
+            catch (Exception ex)
+            {
+                AcceptanceStatusText.Text = ex.Message;
+                AcceptanceStatusText.Foreground = Bad;
+                AcceptanceButton.IsEnabled = true;
+                return;
+            }
+            AcceptanceButton.IsEnabled = true;
+
+            settings.OrderAcceptanceEnabled = turningOn;
+            try { Settings.Save(settings); }
+            catch (Exception ex) { ShowStatus("Η αποθήκευση απέτυχε: " + ex.Message, Bad); return; }
+            CustomerDirectory.Log($"acceptance: switched {(turningOn ? "ON (platform AUTO_ACCEPT_ORDERS=false)" : "OFF (platform AUTO_ACCEPT_ORDERS=true)")}");
+
+            ShowAcceptanceState(settings);
+            Acceptance?.Apply(settings);
+        }
+
+        private async void AcceptOrder_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is not PendingOrder o) return;
+            if (License.Blocked(Module.Orders, out string why)) { ShowPending(pending, why, new()); return; }
+            await AnswerAsync(o, accept: true, reason: null);
+        }
+
+        private async void RejectOrder_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is not PendingOrder o) return;
+            if (License.Blocked(Module.Orders, out string why)) { ShowPending(pending, why, new()); return; }
+            var ask = new RejectReasonWindow(o) { Owner = Window.GetWindow(this) };
+            if (ask.ShowDialog() != true) return;
+            await AnswerAsync(o, accept: false, reason: ask.Reason);
+        }
+
+        private async Task AnswerAsync(PendingOrder o, bool accept, string? reason)
+        {
+            Settings settings;
+            try { settings = Settings.Load(); }
+            catch (Exception ex) { ShowPending(pending, "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message, new()); return; }
+
+            AcceptanceStatusText.Text = (accept ? "Αποδοχή " : "Απόρριψη ") + o.Token + "...";
+            try
+            {
+                using var api = new PointToOrderApiClient(settings);
+                if (accept) await OrderAcceptance.AcceptAsync(api, o.Uuid);
+                else await OrderAcceptance.RejectAsync(api, o.Uuid, reason);
+                CustomerDirectory.Log($"acceptance: {o.Token} {(accept ? "ACCEPTED (CLOSED)" : "REJECTED - " + OrderAcceptance.FitRejectReason(reason))} · {o.Customer} · {o.Total:0.00}");
+            }
+            catch (Exception ex)
+            {
+                CustomerDirectory.Log($"acceptance: {o.Token} FAILED - {ex.Message}");
+                ShowPending(pending, $"{o.Token}: {ex.Message}", new());
+                return;
+            }
+            if (Acceptance != null) await Acceptance.RefreshAsync();
+        }
+
         // ---- till orders → PointToOrder, automatic ------------------------------------------
 
         // Wired by MainWindow, which owns the service so it keeps running on every screen.
