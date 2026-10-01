@@ -5,7 +5,17 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
 
 ## [1.1.3] — 2026-10-01 (branch `sizes`, not tagged)
 
-- **Αποδοχή παραγγελιών από το ταμείο** (owner, 01/10). A new top card on Αρχική with a switch:
+- **Online παραγγελίες: the till decides, the app mirrors** (owner, 01/10 afternoon, replacing
+  the buttons below the same day). The till's own «online orders» screen accepts (with minutes)
+  or rejects; `OrderMirror` reads the connector's EFOM rows and tells PointToOrder — `CLOSED` +
+  `estimatedTime`, or `REJECTED` with a fixed sentence — only while the order is still
+  `SUBMITTED` there. The home card is a status board: one row per waiting order with a pill
+  «Στο ταμείο · n′» / «Δεν έφτασε στο ταμείο · n′» that turns amber at 3′ and red at 8′ (2′ when
+  the connector has not brought it), the verdict shown for a moment when the row leaves, and
+  today's tally. No accept/reject buttons, no sound (the till rings). `Motion.cs`: 200 ms
+  ease-out entrances and colour crossfades, 0.97 press feedback on every button, all off when
+  Windows animations are off. `docs/ORDER_ACCEPTANCE.md` §6–§9. 141 tests.
+- *(superseded the same day)* **Αποδοχή παραγγελιών από το ταμείο** (owner, 01/10). A new top card on Αρχική with a switch:
   on, PointToOrder stops accepting online orders by itself (`AUTO_ACCEPT_ORDERS=false`, set on
   the platform by the app, read back as proof) and every submitted order appears here within
   10 s — token, customer, total, pickup/delivery and when, the items with their options, the

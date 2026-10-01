@@ -197,7 +197,54 @@ on Stavros.FDB while the connector runs.
 | refuse automatically before the customer finishes (closed, out of stock, …) | §7 validation link, `{"valid":false,"message"}` within 5 s | a fixed public HTTPS address: hosting (the licence server) or a permanent tunnel as a Windows service; and it is fail-open |
 | push instead of polling | «Endpoint Submission Link» (not tested) | same public address |
 
-## 9. Test harness
+## 9. The mirror (built 01/10 afternoon — owner: «the till has the accept screen, do the mirror design»)
+
+The till decides; the app tells PointToOrder. Nothing else.
+
+| Till (EFOM, written by Orexsys) | App → PointToOrder | Customer sees |
+|---|---|---|
+| `STATUS 1` (just arrived, waiting) | nothing | «σε αναμονή» (auto-accept is off while the switch is on) |
+| `STATUS 2` + `ACCEPTMIN n` (accepted at the till) | `PUT v2 … {status: CLOSED, estimatedTime: now + n}` | accepted, ready at … |
+| `STATUS -1` (rejected at the till) | `PUT v2 … {status: REJECTED, rejectReason: <fixed sentence>}` | rejected + the sentence |
+| `-1` on a till-sent copy (`[OREXSYS#` in the JSON) | nothing — that is the loop guard | — |
+
+Rules that keep it safe (`OrderMirror.Decide`, tested):
+* only an order that is still `SUBMITTED` / `RECEIVED` on the platform is ever touched — the
+  platform's own status is the lock, so a restart, a second instance or an old EFOM row can
+  never re-send or re-reject; nothing is written to Orexsys;
+* two EFOM rows of one token (connector upsert): the latest untagged one counts (`Index`);
+* EFOM has no reject-reason column, so the customer reads one fixed sentence
+  (`OrderMirror.RejectReason`);
+* with the app closed the till still gets every order (the relay does not wait for us); only
+  the customer's screen says «waiting» until the app runs again — the switch's dialog says so.
+
+Pieces: `OrderMirror.cs` (pure + `LoadRowsAsync` read-only EFOM by `STOREID` = the «Σύνδεση
+P2O» code, `POSITION(tag IN JSON)` for the guard tag, `MirrorAsync`), `OrderMirrorService.cs`
+(5 s; `last-updates/ORDER` then `orders/search {SUBMITTED}` only when it moved or 2′ passed;
+`mirrored_orders.txt` register next to the exe for today's tally), `WaitingRow.cs` (rows
+updated in place), `Motion.cs` + `App.xaml` (motion rules), the card in `SyncView`.
+The accept/reject buttons and `RejectReasonWindow` of §4 are gone; `OrderAcceptance.cs`
+keeps the platform calls (`AcceptAsync` now takes the estimated time).
+
+**The board** («Online παραγγελίες», top of Αρχική): a count pill next to the title, one row
+per waiting order — token, customer, total, pickup/delivery and when, the items and comment —
+and a pill on the right: «Στο ταμείο · n′» (neutral → amber at 3′ → red at 8′ with «ανοίξτε
+την οθόνη online παραγγελιών στο ταμείο»), or «Δεν έφτασε στο ταμείο · n′» (amber → red at 2′
+with «ελέγξτε ότι τρέχει ο σύνδεσμος»). When the till answers, the pill turns «Δεκτή · 20′»
+(green) or «Απορρίφθηκε» (red) for 2.4 s and the row leaves. Bottom line: the last check and
+«Σήμερα: 5 δεκτές · 1 απόρριψη · τελευταία 14:52». No sound: the till rings already.
+
+**Motion** (Emil Kowalski's rules, applied app-wide): rows enter with a 200 ms fade + 6 px
+rise on one strong ease-out and never re-animate on refresh (in-place updates); state colours
+(dot, pill) crossfade in 200 ms, nothing moves; every button shrinks to 0.97 for 100 ms on
+press and springs back in 160 ms; counters and timers that change every few seconds just
+change; Windows «no animations» (or high contrast) sets every duration to zero.
+
+Smoke run 15:20 on 1110: order **N2-ZY** placed with the switch on → connector row EFOM 47
+STATUS 1 within 7 s → board row «N2-ZY · ΜΑΡΙΑ Κ. · 4,00 € · Παραλαβή, το συντομότερο — Στο
+ταμείο · 0′». The accept-at-the-till → CLOSED leg is the owner's to press (result below).
+
+## 10. Test harness
 
 `scratchpad/AcceptTest` (not in the repo; the same calls are in `OrderAcceptance.cs`): modes
 `settings`, `off|on`, `order [name]`, `status <uuid>`, `setstatus <uuid> <STATUS>`,

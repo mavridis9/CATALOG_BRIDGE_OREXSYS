@@ -284,3 +284,11 @@ git-ignored and excluded from publish. The sidebar shows the version.
   only `200 {"valid":false,"message"}` refuses (customer sees the message, order stays DRAFT,
   nothing reaches the relay); any other answer, a 5 s timeout or a dead endpoint = accepted
   (fail-open). It is an automatic gate, not a human one; needs a fixed public HTTPS address.
+  **Final design (owner, same day — «the till has the accept screen, do the mirror»):** the till
+  accepts/rejects on Orexsys's own online-orders screen; `OrderMirror` + `OrderMirrorService` (5 s)
+  read EFOM (`STATUS` 1 waiting / 2 + `ACCEPTMIN` accepted / −1 rejected; `[OREXSYS#` copies
+  skipped via `POSITION` on the blob) and set the platform order `CLOSED` + `estimatedTime` or
+  `REJECTED` — only while it is still `SUBMITTED` there (the platform status is the lock; Orexsys
+  is never written). The home card is a status board with no buttons; `WaitingRow` updates rows in
+  place; `Motion.cs` holds the app's motion rules (200 ms ease-out, 0.97 press, zero when Windows
+  animations are off). Register `mirrored_orders.txt` next to the exe = today's tally.
