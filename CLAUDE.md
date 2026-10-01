@@ -305,3 +305,15 @@ git-ignored and excluded from publish. The sidebar shows the version.
   now includes **`EFOM.STATUS`/`ACCEPTMIN` on the connector's own row, only from 1** — nothing else.
   Verified live 01/10 15:35 (XE-9K → ORDM 59; N2-ZY → −1). Why 30/09 rows auto-went to 2 is still
   the owner's to confirm (connector ini `DSTS=1` changed 01/10 10:49 is the suspect).
+- **Look + layout (01/10 evening, `docs/design/VISUAL_REFRESH.md`).** Petrol rail, tokens in
+  `App.xaml` (key names unchanged; new: `RailBg`, `GoodButton`, `QuietButton`, `SwitchButton` —
+  a Button whose `Tag` "True"/"False" draws the switch, the click handler still decides — `Chip`,
+  `ScreenTitle`, `CardTitle`, `CardText`, fonts `UiFont`/`NumFont`/`IconFont`; implicit Button /
+  TextBox / ToolTip styles). The decision UI is `OrderTicketWindow` (popup, queued by
+  `SyncView`, calls `SyncView.AcceptOrderAsync` / `RejectOrderAsync`); board rows only open it.
+  `OrdersView` = «Αντιστοίχιση παραγγελιών»: the e-mail correlation switch (PIN; Settings no
+  longer has it — `BuildFromForm` carries `EmailOrderCorrelation`, `OrderAcceptanceEnabled`,
+  `AcceptMinutes` from the loaded file), till orders → PointToOrder, the mismatch card.
+  `OrderAcceptance.LoadPendingAsync` reads each waiting order in full once — orders/search has no
+  lines. Screenshots are taken by window handle (`PrintWindow`; the layered ticket from the
+  screen) — never of the whole desktop.

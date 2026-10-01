@@ -5,6 +5,21 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
 
 ## [1.1.3] — 2026-10-01 (branch `sizes`, not tagged)
 
+- **New look, and the order arrives as a ticket** (owner, 01/10 evening; `docs/design/VISUAL_REFRESH.md`).
+  A deep petrol rail with icons, a cool mineral background, one petrol accent, status colours
+  that mean one thing each, numbers in Bahnschrift. A new online order now pops up over
+  everything as a printed ticket (`OrderTicketWindow`): token, customer, when, items with their
+  options, the comment, the total, minute chips and one green button that says what it does
+  («Αποδοχή, έτοιμη σε 20′»); rejecting unfolds the reasons inside the ticket and shows the
+  sentence the customer will read. Several at once queue («1 από 3»); «Αργότερα» leaves it on
+  Αρχική, where a click reopens it. The search for waiting orders leaves the lines out, so each
+  waiting order is read in full once (cached). **Everything about the e-mail correlation moved
+  to its own screen, «Αντιστοίχιση παραγγελιών»** (`OrdersView`): the correlation switch (PIN),
+  the live trigger state, till orders → PointToOrder, the mismatch check; the rail shows the
+  mismatch count. Ρυθμίσεις keeps a pointer. **Fixed:** saving Ρυθμίσεις silently switched
+  «Online παραγγελίες» off and reset the minutes (seen live 16:27 — the platform stayed on manual
+  accept while the app stopped watching). 156 tests.
+
 - **Online παραγγελίες: decided in the tool, applied to both sides** (owner, 01/10 evening,
   final). Every waiting order has a minutes picker, **Αποδοχή** and **Απόρριψη**. Αποδοχή does
   what the till's accept screen does — the connector's EFOM row goes to status 2 with the minutes

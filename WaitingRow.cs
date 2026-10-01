@@ -1,9 +1,17 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace CatalogBridge
 {
+    // One printed line of the ticket: «2×  ΠΙΤΑ ΓΥΡΟΣ  6,50» with the options under the name.
+    public sealed record TicketLine(string QtyText, string Name, string OptionsText, string PriceText)
+    {
+        public bool HasOptions => OptionsText.Length > 0;
+    }
+
     // One row of the «Online παραγγελίες» board, updated in place every few seconds so the
     // row keeps its identity on screen (no flicker, the enter motion plays once).
     // Level: 0 waiting at the till · 1 take a look · 2 stuck · 3 accepted · 4 rejected.
@@ -34,8 +42,26 @@ namespace CatalogBridge
             Token = w.Order.Token;
             Who = $"{w.Order.Customer} · {w.Order.Total:0.00} € · {w.Order.DeliveryText}, {w.Order.WhenText}";
             Items = w.Order.Items + (w.Order.Comment.Length > 0 ? $" — «{w.Order.Comment}»" : "");
+            Customer = w.Order.Customer;
+            TotalText = w.Order.Total.ToString("0.00", Greek) + " €";
+            HowWhen = $"{w.Order.DeliveryText}, {w.Order.WhenText}";
+            Comment = w.Order.Comment.Trim();
+            SubmittedText = $"Ήρθε {w.Order.SubmittedAt.ToLocalTime():HH:mm}";
+            Lines = w.Order.Lines.Select(l => new TicketLine(
+                $"{l.Quantity}×", l.Name, l.Options.Replace("|", ", "), l.Total.ToString("0.00", Greek))).ToList();
             Update(w);
         }
+
+        private static readonly System.Globalization.CultureInfo Greek = new("el-GR");
+
+        // What the order ticket shows (OrderTicketWindow).
+        public string Customer { get; }
+        public string TotalText { get; }
+        public string HowWhen { get; }
+        public string Comment { get; }
+        public bool HasComment => Comment.Length > 0;
+        public string SubmittedText { get; }
+        public List<TicketLine> Lines { get; }
 
         public string StateText { get => stateText; private set => Set(ref stateText, value); }
         public int Level { get => level; private set => Set(ref level, value); }

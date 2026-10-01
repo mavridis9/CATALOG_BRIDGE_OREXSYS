@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Επαναφορά από την αρχή"
         Height="640" Width="620" WindowStartupLocation="CenterOwner"
-        Background="{StaticResource AppBg}" FontFamily="Segoe UI">
+        Background="{StaticResource AppBg}" FontFamily="{StaticResource UiFont}">
 
     <Grid Margin="18">
         <Grid.RowDefinitions>
@@ -15,7 +15,7 @@
 
         <StackPanel Grid.Row="0" Margin="0,0,0,12">
             <TextBlock Text="Επαναφορά από την αρχή" FontSize="18" FontWeight="Bold"
-                       Foreground="#A63A22"/>
+                       Foreground="#B93A2E"/>
             <TextBlock TextWrapping="Wrap" FontSize="12.5" Foreground="{StaticResource MutedBrush}"
                        Margin="0,4,0,0"
                        Text="Διαγράφει τα προϊόντα και τις κατηγορίες του PointToOrder και τις αντιστοιχίσεις (EFIC) του PointToOrder, ώστε όλα να σταλούν ξανά με τον Συγχρονισμό. Στο PointToOrder δεν υπάρχει αναίρεση — ο κατάλογος αποθηκεύεται πρώτα σε αρχείο (φάκελος backups), όπως και ο πίνακας EFIC."/>

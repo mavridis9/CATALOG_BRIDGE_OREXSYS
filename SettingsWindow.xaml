@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Ρυθμίσεις — Γέφυρα Καταλόγου"
-        Height="620" Width="580" WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize">
+        Height="720" Width="660" WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize" Background="{StaticResource AppBg}" FontFamily="{StaticResource UiFont}" FontSize="13.5">
 
     <Window.Resources>
         <Style TargetType="TextBlock" x:Key="FieldLabel">
@@ -11,20 +11,22 @@
             <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
         <Style TargetType="TextBlock" x:Key="SectionHeader">
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Margin" Value="0,14,0,8"/>
-            <Setter Property="Foreground" Value="#2A5788"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="Margin" Value="0,22,0,8"/>
+            <Setter Property="Foreground" Value="{StaticResource AccentDark}"/>
         </Style>
     </Window.Resources>
 
-    <Grid Margin="18">
+    <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+        <Border Grid.Row="0" Style="{StaticResource Card}" Padding="22,4,10,18">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
             <StackPanel>
                 <TextBlock Text="Σύνδεση Orexsys (Firebird)" Style="{StaticResource SectionHeader}"
                            Margin="0,0,0,8"/>
@@ -137,10 +139,10 @@
                 </Grid>
 
                 <TextBlock x:Name="EficHintText" TextWrapping="Wrap" Margin="0,6,0,0" FontSize="12"
-                           Foreground="#5B6572"
+                           Foreground="#5E6E72"
                            Text="Η λίστα συνδέσεων γεμίζει μόλις είναι διαθέσιμη η βάση (ή με «Έλεγχος βάσης»)."/>
 
-                <TextBlock TextWrapping="Wrap" Margin="0,10,0,0" Foreground="#5B6572" FontSize="12"
+                <TextBlock TextWrapping="Wrap" Margin="0,10,0,0" Foreground="#5E6E72" FontSize="12"
                            Text="Το Orexsys κρατά χωριστές τιμές delivery, take away και καταστήματος (πίνακας PRLD). Στις βάσεις που ελέγχθηκαν η τιμή καταστήματος είναι σχεδόν πάντα κενή, ενώ delivery και take away ταυτίζονται — γι' αυτό η προεπιλογή είναι «Delivery»."/>
 
                 <TextBlock Text="Κατηγορίες προς συγχρονισμό" Style="{StaticResource SectionHeader}"/>
@@ -150,12 +152,12 @@
                     <Button Content="Επιλογή κατηγοριών..." Padding="12,4" Margin="14,0,0,0"
                             Click="ChooseCategoriesButton_Click"/>
                 </StackPanel>
-                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5B6572" FontSize="12"
+                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5E6E72" FontSize="12"
                            Text="Ποιες κατηγορίες του Orexsys στέλνει ο Συγχρονισμός. Ορίστε πρώτα τη βάση και τον τιμοκατάλογο — η λίστα δείχνει πόσα προϊόντα κάθε κατηγορίας έχουν τιμή σε αυτόν."/>
 
                 <TextBlock Text="Προϊόντα με μεγέθη" Style="{StaticResource SectionHeader}"/>
                 <ComboBox x:Name="SizeModeCombo" Margin="0,2" DisplayMemberPath="Label"/>
-                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5B6572" FontSize="12"
+                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5E6E72" FontSize="12"
                            Text="Ξεχωριστά προϊόντα: κάθε μέγεθος γίνεται δικό του προϊόν στο PointToOrder («ΤΟΣΤ», «ΤΟΣΤ XL») και η παραγγελία φτάνει στο ταμείο με το μέγεθος. Ένα προϊόν με επιλογές: ένα προϊόν στη φθηνότερη τιμή με ομάδα «ΕΠΙΛΕΞΤΕ ΜΕΓΕΘΟΣ» και επιβάρυνση ανά μέγεθος — η τιμή φτάνει σωστά στο ταμείο, αλλά το μέγεθος μόνο ως κείμενο στις επιλογές της παραγγελίας, όχι στο πεδίο μεγέθους."/>
 
                 <TextBlock Text="Άδεια χρήσης" Style="{StaticResource SectionHeader}"/>
@@ -184,21 +186,12 @@
                     <Button    Grid.Row="1" Grid.Column="2" Content="Ενεργοποίηση" Padding="10,3" Margin="8,4,0,4"
                                VerticalAlignment="Top" Click="InstallLicenceButton_Click"/>
                 </Grid>
-                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5B6572" FontSize="12"
+                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5E6E72" FontSize="12"
                            Text="Η άδεια είναι ένα κείμενο που εκδίδεται για το αποτύπωμα αυτού του υπολογιστή και ορίζει τι περιλαμβάνει (Συγχρονισμός Καταλόγου, Αντιστοίχιση Παραγγελιών &amp; Πελατών) και έως πότε. Επικολλήστε το εδώ και πατήστε «Ενεργοποίηση». Χωρίς ενεργή άδεια το πρόγραμμα μόνο δείχνει — δεν συγχρονίζει, δεν στέλνει, δεν αλλάζει τίποτα· ό,τι έχει ήδη γίνει στο Orexsys και στο PointToOrder μένει ως έχει."/>
 
                 <TextBlock Text="Παραγγελίες PointToOrder" Style="{StaticResource SectionHeader}"/>
-                <CheckBox x:Name="EmailCorrelationCheck" Margin="0,2"
-                          Content="Αντιστοίχιση παραγγελιών μόνο με το e-mail του πελάτη"
-                          ToolTip="Η παραγγελία πηγαίνει στον πελάτη του Orexsys με το ίδιο e-mail (CUST.EMAIL) με τον λογαριασμό του PointToOrder. Το τηλέφωνο δεν χρησιμοποιείται. Αν κανείς δεν έχει αυτό το e-mail, το Orexsys δημιουργεί νέο πελάτη με αυτό."/>
-                <TextBlock x:Name="EmailStateText" TextWrapping="Wrap" Margin="22,4,0,0" FontSize="12"
-                           Foreground="#5B6572" Text="Κατάσταση στη βάση: έλεγχος..."/>
-                <StackPanel Orientation="Horizontal" Margin="22,6,0,0">
-                    <Button x:Name="RemoveEmailButton" Content="Αφαίρεση από το Orexsys..." Padding="10,3"
-                            Visibility="Collapsed" Click="RemoveEmailButton_Click"/>
-                </StackPanel>
-                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5B6572" FontSize="12"
-                           Text="Αλλάζει το trigger EFOM_BIUD_TRG του Orexsys (με αντίγραφο ασφαλείας πρώτα) ώστε κάθε παραγγελία PointToOrder να ταιριάζει με τον πελάτη μόνο από το e-mail του λογαριασμού του — όχι από το τηλέφωνο. Αν κανένας πελάτης δεν έχει αυτό το e-mail, δημιουργείται νέος με αυτό. Εφαρμόζεται με την Αποθήκευση και ελέγχεται σε κάθε εκκίνηση — μια αναβάθμιση του Orexsys μπορεί να την αναιρέσει. Χρειάζεται το Orexsys κλειστό σε όλους τους σταθμούς τη στιγμή της αλλαγής."/>
+                <TextBlock TextWrapping="Wrap" Margin="0,2,0,0" Foreground="#5E6E72" FontSize="12.5"
+                           Text="Η αντιστοίχιση παραγγελιών με το e-mail του πελάτη, η αποστολή των παραγγελιών του ταμείου και ο έλεγχος ασυμφωνιών βρίσκονται στην οθόνη «Αντιστοίχιση παραγγελιών», στο αριστερό μενού."/>
 
                 <TextBlock Text="Απόθεμα" Style="{StaticResource SectionHeader}"/>
                 <CheckBox x:Name="StockSyncCheck" Margin="0,2"
@@ -207,14 +200,14 @@
 
                 <TextBlock Text="Επαναφορά" Style="{StaticResource SectionHeader}"/>
                 <StackPanel Orientation="Horizontal">
-                    <Button Content="Επαναφορά από την αρχή..." Padding="12,4" Foreground="#A63A22"
+                    <Button Content="Επαναφορά από την αρχή..." Padding="12,4" Foreground="#B93A2E"
                             Click="ResetButton_Click"/>
                 </StackPanel>
-                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5B6572" FontSize="12"
+                <TextBlock TextWrapping="Wrap" Margin="0,6,0,0" Foreground="#5E6E72" FontSize="12"
                            Text="Διαγράφει όλα τα προϊόντα και τις κατηγορίες του καταστήματος PointToOrder και τις αντιστοιχίσεις PointToOrder του EFIC (ποτέ Wolt / efood), για να σταλούν όλα ξανά. Δείχνει πρώτα τι θα διαγραφεί και ζητά επιβεβαίωση."/>
 
                 <TextBlock Text="Οθόνες τεχνικού" Style="{StaticResource SectionHeader}"/>
-                <TextBlock TextWrapping="Wrap" Margin="0,0,0,8" Foreground="#5B6572" FontSize="12"
+                <TextBlock TextWrapping="Wrap" Margin="0,0,0,8" Foreground="#5E6E72" FontSize="12"
                            Text="Ο απλός χρήστης βλέπει μόνο την «Αρχική» (κουμπί Συγχρονισμός). Οι παρακάτω οθόνες εμφανίζονται στο πλάι μόνο αν ενεργοποιηθούν εδώ."/>
                 <CheckBox x:Name="ShowDashboardCheck" Content="Πίνακας ελέγχου" Margin="0,2"/>
                 <CheckBox x:Name="ShowCompareCheck" Content="Σύγκριση καταλόγων" Margin="0,2"/>
@@ -223,6 +216,7 @@
                 <CheckBox x:Name="ShowCustomersCheck" Content="Πελάτες (δημιουργία σε Orexsys + PointToOrder)" Margin="0,2"/>
             </StackPanel>
         </ScrollViewer>
+        </Border>
 
         <TextBlock Grid.Row="1" x:Name="StatusText" TextWrapping="Wrap" Margin="0,12,0,0"/>
 
@@ -232,7 +226,7 @@
             <Button x:Name="TestApiButton" Content="Έλεγχος API" Padding="12,6" Margin="0,0,8,0"
                     Click="TestApiButton_Click"/>
             <Button Content="Άκυρο" Padding="12,6" Margin="0,0,8,0" Click="CancelButton_Click"/>
-            <Button x:Name="SaveButton" Content="Αποθήκευση" Padding="12,6" FontWeight="Bold"
+            <Button x:Name="SaveButton" Content="Αποθήκευση" Style="{StaticResource PrimaryButton}" Padding="18,7"
                     Click="SaveButton_Click"/>
         </StackPanel>
     </Grid>

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Κάρτα πελάτη" SizeToContent="Height" Width="440"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
-        Background="{StaticResource AppBg}" FontFamily="Segoe UI">
+        Background="{StaticResource AppBg}" FontFamily="{StaticResource UiFont}">
 
     <Grid Margin="20">
         <Grid.RowDefinitions>
@@ -22,7 +22,7 @@
             <StackPanel>
                 <TextBlock Text="Αριθμός κάρτας" Foreground="{StaticResource InkBrush}"/>
                 <TextBox x:Name="CardBox" Margin="0,5,0,0" Padding="6,4" MaxLength="50"/>
-                <TextBlock x:Name="ErrorText" TextWrapping="Wrap" FontSize="12" Margin="0,6,0,0" Foreground="#A63A22"/>
+                <TextBlock x:Name="ErrorText" TextWrapping="Wrap" FontSize="12" Margin="0,6,0,0" Foreground="#B93A2E"/>
             </StackPanel>
         </Border>
 

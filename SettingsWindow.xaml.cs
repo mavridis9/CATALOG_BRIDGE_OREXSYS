@@ -89,8 +89,6 @@ namespace CatalogBridge
             EficConnectionCombo.SelectedIndex = savedEficCode.Length > 0 ? 0 : -1;
 
             StockSyncCheck.IsChecked = settings.StockSyncEnabled;
-            EmailCorrelationCheck.IsChecked = settings.EmailOrderCorrelation;
-            Loaded += async (s, e) => await RefreshEmailStateAsync(settings);
             ShowLicence();
 
             SizeModeCombo.ItemsSource = new List<SizeModeOption>
@@ -143,9 +141,11 @@ namespace CatalogBridge
             PriceSource = (PriceSourceCombo.SelectedItem as PriceSourceOption)?.Value ?? PriceSource.Delivery,
             EficStoreCode = (EficConnectionCombo.SelectedItem as EficConnectionOption)?.Code ?? "",
             StockSyncEnabled = StockSyncCheck.IsChecked == true,
-            EmailOrderCorrelation = EmailCorrelationCheck.IsChecked == true,
+            EmailOrderCorrelation = loaded.EmailOrderCorrelation,      // switched on «Αντιστοίχιση παραγγελιών» since 01/10/2026
             TillOrderSyncEnabled = loaded.TillOrderSyncEnabled,      // the home-page switch, kept as it is
             TillOrderSyncSince = loaded.TillOrderSyncSince,
+            OrderAcceptanceEnabled = loaded.OrderAcceptanceEnabled,  // the home-page switch: saving here must not turn it off
+            AcceptMinutes = loaded.AcceptMinutes,
             SizeMode = (SizeModeCombo.SelectedItem as SizeModeOption)?.Value ?? SizeMode.SeparateItems,
             SyncAllCategories = syncAllCategories,
             SyncCategoryIds = string.Join(",", syncCategoryIds.OrderBy(id => id)),
@@ -494,7 +494,6 @@ namespace CatalogBridge
                 {
                     MessageBox.Show("Οι ρυθμίσεις αποθηκεύτηκαν, αλλά η αντιστοίχιση με e-mail ΔΕΝ εφαρμόστηκε:\n\n" +
                                     result.Message, "Ρυθμίσεις", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    await RefreshEmailStateAsync(saved);
                     return;   // stay open so the problem is visible
                 }
             }
@@ -505,60 +504,6 @@ namespace CatalogBridge
 
         private static string BackupFolder => System.IO.Path.Combine(AppContext.BaseDirectory, "backups");
 
-        // Shows what the live trigger holds right now - read-only - and offers removal only
-        // when the patch is actually there.
-        private async Task RefreshEmailStateAsync(Settings settings)
-        {
-            if (!settings.IsDatabaseConfigured)
-            {
-                EmailStateText.Text = "Κατάσταση στη βάση: —";
-                return;
-            }
-            try
-            {
-                var state = await Task.Run(() => EfomTriggerGuard.ReadState(settings));
-                EmailStateText.Foreground = state == EfomTriggerGuard.State.Patched ? Good : Muted;
-                EmailStateText.Text = state switch
-                {
-                    EfomTriggerGuard.State.Patched => "Κατάσταση στη βάση: ✓ ενεργή — οι παραγγελίες ταιριάζουν μόνο με e-mail.",
-                    EfomTriggerGuard.State.PatchedOlder => "Κατάσταση στη βάση: παλαιότερη έκδοση της αντιστοίχισης — " +
-                                                               "με την Αποθήκευση γίνεται «μόνο e-mail».",
-                    EfomTriggerGuard.State.NotPatched => "Κατάσταση στη βάση: δεν έχει εφαρμοστεί — οι παραγγελίες ταιριάζουν μόνο με τηλέφωνο.",
-                    _ => "Κατάσταση στη βάση: το trigger EFOM_BIUD_TRG δεν υπάρχει σε αυτή τη βάση.",
-                };
-                RemoveEmailButton.Visibility = state is EfomTriggerGuard.State.Patched or EfomTriggerGuard.State.PatchedOlder
-                    ? Visibility.Visible : Visibility.Collapsed;
-            }
-            catch (Exception ex)
-            {
-                EmailStateText.Foreground = Warn;
-                EmailStateText.Text = "Κατάσταση στη βάση: δεν ήταν δυνατή η ανάγνωση — " + ex.Message;
-            }
-        }
-
-        private async void RemoveEmailButton_Click(object sender, RoutedEventArgs e)
-        {
-            var settings = BuildFromForm();
-            var sure = MessageBox.Show(
-                "Να αφαιρεθεί η αντιστοίχιση με e-mail από το trigger του Orexsys;\n\n" +
-                "Οι παραγγελίες θα ταιριάζουν πάλι μόνο με τηλέφωνο. Αν το ίδιο Orexsys το χρησιμοποιεί " +
-                "και η ΔΙΑΧΕΙΡΙΣΗ, εκείνη θα την ξαναβάλει στην επόμενη εκκίνησή της.",
-                "Αφαίρεση", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
-            if (sure != MessageBoxResult.Yes) return;
-
-            RemoveEmailButton.IsEnabled = false;
-            var result = await Task.Run(() => EfomTriggerGuard.Remove(settings, BackupFolder));
-            RemoveEmailButton.IsEnabled = true;
-
-            if (result.Outcome == EfomTriggerGuard.Outcome.Removed)
-                EmailCorrelationCheck.IsChecked = false;
-            MessageBox.Show(result.Outcome == EfomTriggerGuard.Outcome.Removed
-                    ? "Η αντιστοίχιση με e-mail αφαιρέθηκε. Πατήστε Αποθήκευση για να κρατηθεί και η ρύθμιση."
-                    : result.Message,
-                "Αφαίρεση", MessageBoxButton.OK,
-                result.IsProblem ? MessageBoxImage.Warning : MessageBoxImage.Information);
-            await RefreshEmailStateAsync(settings);
-        }
 
         private void CancelButton_Click(object sender, RoutedEventArgs e) => Close();
 
@@ -612,10 +557,10 @@ namespace CatalogBridge
         }
 
         private static readonly Brush Normal = Brushes.Black;
-        private static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(0x5B, 0x65, 0x72));
-        private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(0x2F, 0x6C, 0x43));
-        private static readonly Brush Warn = new SolidColorBrush(Color.FromRgb(0x8A, 0x5A, 0x1B));
-        private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(0xA6, 0x3A, 0x22));
+        private static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(0x5E, 0x6E, 0x72));
+        private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(0x1F, 0x7A, 0x4D));
+        private static readonly Brush Warn = new SolidColorBrush(Color.FromRgb(0xA8, 0x64, 0x00));
+        private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(0xB9, 0x3A, 0x2E));
 
         private void ShowStatus(string message, Brush colour)
         {

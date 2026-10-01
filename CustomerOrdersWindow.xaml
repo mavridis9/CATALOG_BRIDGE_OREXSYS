@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Παραγγελίες πελάτη" Height="560" Width="820"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource AppBg}" FontFamily="Segoe UI">
+        Background="{StaticResource AppBg}" FontFamily="{StaticResource UiFont}">
 
     <Grid Margin="18">
         <Grid.RowDefinitions>

@@ -155,8 +155,8 @@ namespace CatalogBridge
 
                 var waiting = OrderMirror.Pair(still, rows, now);
                 string status = waiting.Count == 0
-                    ? $"Καμία παραγγελία δεν περιμένει ({DateTime.Now:HH:mm:ss})"
-                    : $"{waiting.Count} παραγγελί{(waiting.Count == 1 ? "α περιμένει" : "ες περιμένουν")} το ταμείο ({DateTime.Now:HH:mm:ss})";
+                    ? $"Τελευταίος έλεγχος {DateTime.Now:HH:mm:ss}"
+                    : $"{waiting.Count} σε αναμονή · τελευταίος έλεγχος {DateTime.Now:HH:mm:ss}";
                 Changed?.Invoke(Build(settings, waiting, status, false));
             }
             catch (Exception ex)

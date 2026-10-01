@@ -9,28 +9,29 @@ using System.Windows.Media.Animation;
 
 namespace CatalogBridge
 {
-    // The end user's whole world: one button that makes PointToOrder match Orexsys.
-    //
-    // What one press does, in order:
-    //   1. Reads both catalogs and the EFIC correlations.
-    //   2. Anything new in Orexsys (real products - not extras - active, priced) is shown in
-    //      the preview/map first: category names and product names are editable there, and
-    //      NOTHING is sent until the user confirms. On a fresh installation this preview IS
-    //      the whole catalog.
-    //   3. Prices are NEVER touched: PointToOrder prices flow into Orexsys with each order.
-    //   4. Products switched off in the POS but still selling online are switched off online.
-    //   5. Everything is reported in plain language.
-    //
-    // Only ID-matched (EFIC) pairs are ever auto-fixed; name-guessed pairs are technician
-    // territory and never touched from here.
+    // Αρχική: what the till needs during the day.
+    //   1. Online orders - every waiting order, and the ticket that pops up when one arrives
+    //      (OrderTicketWindow). The decision is applied to Orexsys first and PointToOrder second.
+    //   2. The catalogue button - one press makes PointToOrder match Orexsys:
+    //      reads both catalogs and the EFIC correlations; shows anything new in Orexsys (real
+    //      products, active, priced) in an editable preview first and sends NOTHING until the
+    //      user confirms; never touches prices; switches off online what is off at the POS;
+    //      reports in plain language. Only ID-matched (EFIC) pairs are ever auto-fixed.
+    // The e-mail correlation, till orders → PointToOrder and the mismatch check live on
+    // «Αντιστοίχιση παραγγελιών» (OrdersView) since 01/10/2026.
     public partial class SyncView : UserControl
     {
         public SyncView()
         {
             InitializeComponent();
+            var greek = new System.Globalization.CultureInfo("el-GR");
+            string day = DateTime.Today.ToString("dddd d MMMM", greek);
+            TodayTitle.Text = char.ToUpper(day[0], greek) + day[1..];
         }
 
         private async void SyncButton_Click(object sender, RoutedEventArgs e) => await SyncAsync();
+
+        private Brush Res(string key) => (Brush)FindResource(key);
 
         // ---- licence -------------------------------------------------------------------------
 
@@ -43,113 +44,20 @@ namespace CatalogBridge
             if (!show) return;
 
             bool amber = worst == LicenseState.Grace;
-            LicenceBanner.Background = new SolidColorBrush(amber ? Color.FromRgb(0xFF, 0xF4, 0xDB) : Color.FromRgb(0xFD, 0xEC, 0xEA));
-            LicenceBannerText.Foreground = new SolidColorBrush(amber ? Color.FromRgb(0xB2, 0x6A, 0x00) : Color.FromRgb(0xC4, 0x2B, 0x1C));
+            LicenceBanner.Background = Res(amber ? "WarnSoft" : "BadSoft");
+            LicenceBannerText.Foreground = Res(amber ? "WarnBrush" : "BadBrush");
             LicenceBannerText.Text = worst switch
             {
-                LicenseState.Grace => $"⚠ {License.Summary()}. Το πρόγραμμα λειτουργεί κανονικά για λίγες μέρες ακόμα — επικοινωνήστε για ανανέωση.",
-                LicenseState.Expired => $"⛔ {License.Summary()}. Το πρόγραμμα μόνο δείχνει — δεν συγχρονίζει, δεν στέλνει, δεν αλλάζει τίποτα. Επικοινωνήστε για ανανέωση.",
+                LicenseState.Grace => $"{License.Summary()}. Το πρόγραμμα λειτουργεί κανονικά για λίγες μέρες ακόμα. Επικοινωνήστε για ανανέωση.",
+                LicenseState.Expired => $"{License.Summary()}. Το πρόγραμμα μόνο δείχνει: δεν συγχρονίζει, δεν στέλνει, δεν αλλάζει τίποτα. Επικοινωνήστε για ανανέωση.",
                 _ => License.Current == null
-                    ? "⛔ Χωρίς άδεια χρήσης. Ανοίξτε τις Ρυθμίσεις → «Άδεια χρήσης», διαβάστε το αποτύπωμα του υπολογιστή και ζητήστε άδεια." +
+                    ? "Χωρίς άδεια χρήσης. Ανοίξτε τις Ρυθμίσεις, ενότητα «Άδεια χρήσης», διαβάστε το αποτύπωμα του υπολογιστή και ζητήστε άδεια." +
                       (License.Problem.Length > 0 && License.Problem != "Δεν υπάρχει άδεια χρήσης." ? $" ({License.Problem})" : "")
-                    : "⛔ " + License.Summary(),
+                    : License.Summary(),
             };
         }
 
-        // ---- order mismatches (owner, 23/09/2026) -------------------------------------------
-
-        // Wired by MainWindow, which owns the service.
-        public OrderMismatchService? Mismatches { get; set; }
-
-        private static readonly Brush DotOff = new SolidColorBrush(Color.FromRgb(0xC9, 0xCE, 0xD9));
-        private static readonly Brush DotOn = new SolidColorBrush(Color.FromRgb(0x16, 0x80, 0x3C));
-        private static readonly Brush DotBad = new SolidColorBrush(Color.FromRgb(0xC4, 0x2B, 0x1C));
-
-        private MismatchReport lastReport = new();
-
-        public void ShowMismatches(MismatchReport report, string status)
-        {
-            lastReport = report;
-            MismatchGrid.ItemsSource = report.Orders;
-            MismatchGrid.Visibility = report.Orders.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            CustomerTotalsHeader.Visibility = CustomerTotalsGrid.Visibility =
-                report.Customers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            CustomerTotalsGrid.ItemsSource = report.Customers;
-            MismatchStatusText.Text = status;
-            bool error = status.Contains("σφάλμα");
-            MismatchStatusText.Foreground = report.Count > 0 || error ? Bad : Normal;
-            MismatchDot.Background = report.Count > 0 || error ? DotBad : status.Length > 0 ? DotOn : DotOff;
-        }
-
-        // «Παραγγελίες...» on a customer whose totals differ: the same window as the double-click
-        // in Πελάτες, where each order can be sent or cancelled.
-        private async void CustomerTotalsOpen_Click(object sender, RoutedEventArgs e)
-        {
-            if ((sender as FrameworkElement)?.DataContext is not CustomerTotals c) return;
-            Settings settings;
-            try { settings = Settings.Load(); }
-            catch (Exception ex) { MismatchStatusText.Text = "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message; return; }
-            new CustomerOrdersWindow(settings, c.Customer) { Owner = Window.GetWindow(this) }.ShowDialog();
-            if (Mismatches != null) await Mismatches.RunNowAsync();
-        }
-
-        private async void MismatchCheckButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (Mismatches == null) return;
-            MismatchCheckButton.IsEnabled = false;
-            MismatchStatusText.Text = "Έλεγχος...";
-            try { await Mismatches.RunNowAsync(); }
-            finally { MismatchCheckButton.IsEnabled = true; }
-        }
-
-        // The fix, on the user's word only: the side that is still active gets cancelled the
-        // same way the «Ακύρωση παραγγελίας» button does it (OrderCancel / TillOrderSender).
-        private async void MismatchFix_Click(object sender, RoutedEventArgs e)
-        {
-            if ((sender as FrameworkElement)?.DataContext is not Mismatch m) return;
-            if (License.Blocked(Module.Orders, out string why)) { ShowMismatches(lastReport, why); return; }
-
-            bool onPlatform = m.Kind == MismatchKind.CancelledInOrexsysActiveOnPlatform;
-            var sure = MessageBox.Show(
-                $"{m.Title}\n{m.Problem}\n\n" +
-                (onPlatform
-                    ? $"Να ακυρωθεί και στο PointToOrder ({m.Token}); Θα φύγει από το ιστορικό του πελάτη."
-                    : "Να ακυρωθεί και στο Orexsys; Γίνεται όπως στο ταμείο: αντιστρέφονται τα είδη και οι πληρωμές και εκδίδεται " +
-                      "ακυρωτικό παραστατικό. ΔΕΝ αναιρείται.") +
-                "\n\nΣυνέχεια;",
-                m.Action, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
-            if (sure != MessageBoxResult.Yes) return;
-
-            Settings settings;
-            try { settings = Settings.Load(); }
-            catch (Exception ex) { MismatchStatusText.Text = "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message; return; }
-
-            MismatchStatusText.Text = $"Ακύρωση #{m.OrdmId}...";
-            try
-            {
-                if (onPlatform)
-                {
-                    using var api = new PointToOrderApiClient(settings);
-                    await TillOrderSender.CancelOnPlatformAsync(api, m.Uuid);
-                    CustomerDirectory.Log($"mismatch: order {m.OrdmId} cancelled on PointToOrder ({m.Token}) - was cancelled in Orexsys");
-                }
-                else
-                {
-                    await OrderCancel.CancelInOrexsysAsync(settings, m.OrdmId, $"Γέφυρα: ακυρωμένη στο P2O {m.Token}");
-                    CustomerDirectory.Log($"mismatch: order {m.OrdmId} cancelled in Orexsys - was cancelled on PointToOrder ({m.Token})");
-                }
-            }
-            catch (Exception ex)
-            {
-                CustomerDirectory.Log($"mismatch: order {m.OrdmId} FAILED - {ex.Message}");
-                MismatchStatusText.Text = $"Η ακύρωση της #{m.OrdmId} απέτυχε: {ex.Message}";
-                MismatchStatusText.Foreground = Bad;
-                return;
-            }
-            if (Mismatches != null) await Mismatches.RunNowAsync();
-        }
-
-        // ---- online orders: the till decides, PointToOrder is told (owner, 01/10/2026) -------
+        // ---- online orders (owner, 01/10/2026) ------------------------------------------------
 
         // Wired by MainWindow, which owns the service so it keeps watching on every screen.
         public OrderMirrorService? Mirror { get; set; }
@@ -159,24 +67,33 @@ namespace CatalogBridge
         private readonly System.Collections.ObjectModel.ObservableCollection<WaitingRow> waitingRows = new();
         private readonly Dictionary<string, WaitingRow> rowsByUuid = new();
 
+        // The ticket: one open at a time, the rest queued oldest first. «Αργότερα» on a ticket
+        // means it does not pop up again by itself; its row on Αρχική still opens it.
+        private OrderTicketWindow? ticket;
+        private readonly List<string> ticketQueue = new();
+        private readonly HashSet<string> dismissed = new();
+        private bool switchOn;
+
         public void ShowMirrorState(Settings settings)
         {
-            bool on = settings.OrderAcceptanceEnabled;
+            switchOn = settings.OrderAcceptanceEnabled;
             WaitingRow.DefaultMinutes = settings.AcceptMinutes;
-            MirrorButton.Content = on ? "Απενεργοποίηση" : "Ενεργοποίηση";
-            MirrorStateText.Text = on
-                ? "Ενεργό: κάθε online παραγγελία περιμένει εδώ. Με «Αποδοχή» (και τα λεπτά της) περνάει στο ταμείο ως " +
-                  "παραγγελία και ο πελάτης ενημερώνεται· με «Απόρριψη» δεν φτάνει ποτέ στο ταμείο και ο πελάτης βλέπει τον λόγο. " +
-                  "Ό,τι αποφασιστεί στην οθόνη online παραγγελιών του Orexsys περνάει κι αυτό μόνο του στο PointToOrder."
-                : "Ανενεργό: το PointToOrder δέχεται κάθε παραγγελία μόνο του, όπως πάντα.";
+            MirrorButton.Tag = switchOn ? "True" : "False";
+            MirrorStateText.Text = switchOn
+                ? "Κάθε online παραγγελία περιμένει την απάντησή σας και ανοίγει μπροστά σας μόλις έρθει. Μόνο όσες δεχτείτε " +
+                  "γίνονται παραγγελίες στο ταμείο. Ό,τι απαντήσετε από την οθόνη online παραγγελιών του Orexsys περνάει κι αυτό στο PointToOrder."
+                : "Το PointToOrder δέχεται κάθε παραγγελία μόνο του. Ενεργοποιήστε για να εγκρίνετε εσείς κάθε παραγγελία.";
             WaitingList.ItemsSource ??= waitingRows;
-            if (!on)
+            if (!switchOn)
             {
                 waitingRows.Clear();
                 rowsByUuid.Clear();
+                ticketQueue.Clear();
+                ticket?.Close();
                 MirrorStatusText.Text = "";
                 MirrorTodayText.Text = "";
                 MirrorCount.Visibility = Visibility.Collapsed;
+                WaitingEmpty.Visibility = Visibility.Collapsed;
                 SetDot(MirrorDotColor, DotOffColor);
             }
             else SetDot(MirrorDotColor, License.CanWrite(Module.Orders) ? DotOnColor : DotOffColor);
@@ -186,8 +103,9 @@ namespace CatalogBridge
         {
             WaitingList.ItemsSource ??= waitingRows;
 
-            // Update / add the ones still waiting.
+            // Update / add the ones still waiting; a new one goes to the ticket queue.
             var seen = new HashSet<string>();
+            bool arrived = false;
             foreach (var w in state.Waiting)
             {
                 seen.Add(w.Order.Uuid);
@@ -197,13 +115,20 @@ namespace CatalogBridge
                     row = new WaitingRow(w);
                     rowsByUuid[w.Order.Uuid] = row;
                     waitingRows.Add(row);
+                    if (!dismissed.Contains(row.Uuid) && !ticketQueue.Contains(row.Uuid) && ticket?.Row.Uuid != row.Uuid)
+                    {
+                        ticketQueue.Add(row.Uuid);
+                        arrived = true;
+                    }
                 }
             }
-            // The ones that left: show the till's verdict for a moment, then let the row go.
+            // The ones that left: show the verdict for a moment, then let the row go.
             foreach (var row in waitingRows.Where(r => !seen.Contains(r.Uuid) && !r.Leaving).ToList())
             {
                 var verdict = state.Today.Where(e => e.Token == row.Token).OrderByDescending(e => e.When).FirstOrDefault();
                 row.Leave(verdict);
+                ticketQueue.Remove(row.Uuid);
+                if (ticket != null && ticket.Row == row) ticket.ShowAnsweredElsewhere(verdict);
                 var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(verdict == null ? 0.2 : 2.4) };
                 t.Tick += (s, e) => { t.Stop(); waitingRows.Remove(row); rowsByUuid.Remove(row.Uuid); };
                 t.Start();
@@ -212,15 +137,79 @@ namespace CatalogBridge
             int count = state.Waiting.Count;
             MirrorCountText.Text = count.ToString();
             MirrorCount.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            WaitingEmpty.Visibility = switchOn && count == 0 && !state.Error ? Visibility.Visible : Visibility.Collapsed;
             MirrorStatusText.Text = state.Status;
             MirrorStatusText.Foreground = state.Error ? Bad : Normal;
             MirrorTodayText.Text = state.TodayText;
             int worst = state.Waiting.Count == 0 ? 0 : state.Waiting.Max(w => w.Level);
             SetDot(MirrorDotColor, state.Error || worst == 2 ? DotBadColor : count > 0 ? DotWaitColor
                 : Mirror?.IsRunning == true ? DotOnColor : DotOffColor);
+
+            if (arrived)
+            {
+                // The till must hear it and see it: a new order is money waiting for an answer.
+                try { System.Media.SystemSounds.Exclamation.Play(); } catch { }
+                if (ticket == null) ShowNextTicket();
+            }
+            UpdateQueueText();
         }
 
-        // ---- the decision, made here (owner, 01/10 evening) --------------------------------
+        private void ShowNextTicket()
+        {
+            while (ticketQueue.Count > 0)
+            {
+                string uuid = ticketQueue[0];
+                ticketQueue.RemoveAt(0);
+                if (rowsByUuid.TryGetValue(uuid, out var row) && !row.Leaving) { OpenTicket(row); return; }
+            }
+        }
+
+        private void OpenTicket(WaitingRow row)
+        {
+            if (ticket != null)
+            {
+                if (ticket.Busy || ticket.Row == row) { ticket.Activate(); return; }
+                // Switch the open ticket to the clicked order; the one it showed goes back in line.
+                if (!ticket.Row.Leaving && !ticketQueue.Contains(ticket.Row.Uuid)) ticketQueue.Insert(0, ticket.Row.Uuid);
+                ticketQueue.Remove(row.Uuid);
+                ticket.Load(row);
+                ticket.Activate();
+                UpdateQueueText();
+                return;
+            }
+            var owner = Window.GetWindow(this);
+            ticket = new OrderTicketWindow(row, AcceptOrderAsync, RejectOrderAsync) { Owner = owner };
+            ticket.Closed += (s, e) =>
+            {
+                var closed = (OrderTicketWindow)s!;
+                if (!closed.Row.Leaving) dismissed.Add(closed.Row.Uuid);   // «Αργότερα»: no more pop-ups for it
+                ticket = null;
+                ShowNextTicket();
+            };
+            if (owner != null)
+            {
+                if (owner.WindowState == WindowState.Minimized) owner.WindowState = WindowState.Normal;
+                owner.Activate();
+            }
+            UpdateQueueText();
+            ticket.Show();
+        }
+
+        private void UpdateQueueText()
+        {
+            if (ticket == null) return;
+            int queued = ticketQueue.Count(u => rowsByUuid.TryGetValue(u, out var r) && !r.Leaving);
+            ticket.SetQueue(1, 1 + queued);
+        }
+
+        private void OpenTicket_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is not WaitingRow row || row.Leaving) return;
+            dismissed.Remove(row.Uuid);
+            OpenTicket(row);
+        }
+
+        // ---- the decision (called by the ticket) ----------------------------------------------
         // Αποδοχή: the till first (the connector's row 1 → 2 with the minutes - the vendor trigger
         // raises the till order), then the platform (CLOSED + ready time). Απόρριψη: the till
         // (1 → -1, so nobody raises it; skipped when the row is not there yet - the service voids
@@ -228,34 +217,35 @@ namespace CatalogBridge
         // platform call fails after the till changed, the mirror tells the platform on a later
         // tick - the row is 2 / -1 by then - so the customer is never left wrong for long.
 
-        private async void AcceptHere_Click(object sender, RoutedEventArgs e)
+        public async Task<(bool Ok, string Message)> AcceptOrderAsync(WaitingRow row, int minutes)
         {
-            if ((sender as FrameworkElement)?.DataContext is not WaitingRow row || !row.CanAccept) return;
-            if (License.Blocked(Module.Orders, out string why)) { MirrorStatusText.Text = why; MirrorStatusText.Foreground = Bad; return; }
+            if (!row.CanAccept) return (false, row.AcceptBlock);
+            if (License.Blocked(Module.Orders, out string why)) return (false, why);
             Settings settings;
             try { settings = Settings.Load(); }
-            catch (Exception ex) { MirrorStatusText.Text = "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message; MirrorStatusText.Foreground = Bad; return; }
+            catch (Exception ex) { return (false, "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message); }
 
-            int minutes = row.Minutes;
-            if (minutes != settings.AcceptMinutes) { settings.AcceptMinutes = minutes; try { Settings.Save(settings); } catch { } }
+            if (minutes != settings.AcceptMinutes)
+            {
+                settings.AcceptMinutes = minutes;
+                WaitingRow.DefaultMinutes = minutes;
+                try { Settings.Save(settings); } catch { }
+            }
 
             row.Busy = true;
-            MirrorStatusText.Text = $"{row.Token}: αποδοχή στο ταμείο...";
-            MirrorStatusText.Foreground = Normal;
             long? ordmId;
             try { ordmId = await OrderMirror.AcceptAtTillAsync(settings, row.EfomId, minutes); }
             catch (Exception ex)
             {
                 row.Busy = false;
                 CustomerDirectory.Log($"accept: {row.Token} at the till FAILED - {ex.Message}");
-                MirrorStatusText.Text = $"{row.Token}: {ex.Message}";
-                MirrorStatusText.Foreground = Bad;
                 if (Mirror != null) await Mirror.RefreshAsync();
-                return;
+                return (false, ex.Message);
             }
             CustomerDirectory.Log($"accept: {row.Token} accepted at the till from here ({minutes}′) → EFOM {row.EfomId} status 2, ORDM {ordmId?.ToString() ?? "(not yet)"}");
             OrderMirror.RememberOnce(OrderMirror.RegisterFile, new MirrorEvent(DateTime.UtcNow, row.Token, MirrorAction.Accept, minutes));
-            MirrorStatusText.Text = $"{row.Token}: δεκτή στο ταμείο{(ordmId is long o ? $" (παραγγελία #{o})" : "")} · ενημέρωση PointToOrder...";
+
+            string message = ordmId is long o ? $"Παραγγελία #{o} στο ταμείο. Ο πελάτης ενημερώθηκε." : "Πέρασε στο ταμείο. Ο πελάτης ενημερώθηκε.";
             try
             {
                 using var api = new PointToOrderApiClient(settings);
@@ -265,27 +255,25 @@ namespace CatalogBridge
             catch (Exception ex)
             {
                 CustomerDirectory.Log($"accept: {row.Token} platform FAILED - {ex.Message} (the mirror will retry)");
-                MirrorStatusText.Text = $"{row.Token}: δεκτή στο ταμείο, αλλά το PointToOrder δεν ενημερώθηκε ακόμα ({ex.Message}) — θα ξαναπροσπαθήσει μόνο του.";
-                MirrorStatusText.Foreground = Warn;
+                message = (ordmId is long o2 ? $"Παραγγελία #{o2} στο ταμείο. " : "Πέρασε στο ταμείο. ") +
+                          "Το PointToOrder δεν ενημερώθηκε ακόμα· θα ξαναπροσπαθήσει μόνο του.";
             }
             if (Mirror != null) await Mirror.RefreshAsync();
+            return (true, message);
         }
 
-        private async void RejectHere_Click(object sender, RoutedEventArgs e)
+        public async Task<(bool Ok, string Message)> RejectOrderAsync(WaitingRow row, string reason)
         {
-            if ((sender as FrameworkElement)?.DataContext is not WaitingRow row || row.Leaving || !row.CanReject) return;
-            if (License.Blocked(Module.Orders, out string why)) { MirrorStatusText.Text = why; MirrorStatusText.Foreground = Bad; return; }
-            var ask = new RejectReasonWindow(row.Token + " · " + row.Who, row.Items) { Owner = Window.GetWindow(this) };
-            if (ask.ShowDialog() != true) return;
+            if (row.Leaving || !row.CanReject) return (false, row.RejectBlock.Length > 0 ? row.RejectBlock : "Η παραγγελία έχει ήδη απαντηθεί.");
+            if (License.Blocked(Module.Orders, out string why)) return (false, why);
             Settings settings;
             try { settings = Settings.Load(); }
-            catch (Exception ex) { MirrorStatusText.Text = "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message; MirrorStatusText.Foreground = Bad; return; }
+            catch (Exception ex) { return (false, "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message); }
 
             row.Busy = true;
-            MirrorStatusText.Foreground = Normal;
-            if (row.CanAccept)   // the row is at the till and still waits: void it there first
+            bool atTill = row.CanAccept;   // the row is at the till and still waits: void it there first
+            if (atTill)
             {
-                MirrorStatusText.Text = $"{row.Token}: απόρριψη στο ταμείο...";
                 try
                 {
                     await OrderMirror.RejectAtTillAsync(settings, row.EfomId);
@@ -296,35 +284,35 @@ namespace CatalogBridge
                 {
                     row.Busy = false;
                     CustomerDirectory.Log($"reject: {row.Token} at the till FAILED - {ex.Message}");
-                    MirrorStatusText.Text = $"{row.Token}: {ex.Message}";
-                    MirrorStatusText.Foreground = Bad;
                     if (Mirror != null) await Mirror.RefreshAsync();
-                    return;
+                    return (false, ex.Message);
                 }
             }
-            MirrorStatusText.Text = $"{row.Token}: ενημέρωση PointToOrder...";
             try
             {
                 using var api = new PointToOrderApiClient(settings);
-                await OrderAcceptance.RejectAsync(api, row.Uuid, ask.Reason);
-                CustomerDirectory.Log($"reject: {row.Token} → REJECTED on the platform - {ask.Reason}");
-                if (!row.CanAccept)   // the row was not at the till: registered here, at the platform step
+                await OrderAcceptance.RejectAsync(api, row.Uuid, reason);
+                CustomerDirectory.Log($"reject: {row.Token} → REJECTED on the platform - {reason}");
+                if (!atTill)
                     OrderMirror.RememberOnce(OrderMirror.RegisterFile, new MirrorEvent(DateTime.UtcNow, row.Token, MirrorAction.Reject, 0));
             }
             catch (Exception ex)
             {
                 CustomerDirectory.Log($"reject: {row.Token} platform FAILED - {ex.Message}");
-                MirrorStatusText.Text = $"{row.Token}: το PointToOrder δεν ενημερώθηκε ({ex.Message}).";
-                MirrorStatusText.Foreground = Bad;
                 row.Busy = false;
+                if (Mirror != null) await Mirror.RefreshAsync();
+                return atTill
+                    ? (true, "Δεν θα φτάσει στο ταμείο. Το PointToOrder δεν ενημερώθηκε ακόμα· θα ξαναπροσπαθήσει μόνο του.")
+                    : (false, "Το PointToOrder δεν ενημερώθηκε: " + ex.Message);
             }
             if (Mirror != null) await Mirror.RefreshAsync();
+            return (true, "Δεν θα φτάσει στο ταμείο. Ο πελάτης βλέπει τον λόγο.");
         }
 
-        private static readonly Color DotOffColor = Color.FromRgb(0xC9, 0xCE, 0xD9);
-        private static readonly Color DotOnColor = Color.FromRgb(0x16, 0x80, 0x3C);
-        private static readonly Color DotWaitColor = Color.FromRgb(0xB4, 0x53, 0x09);
-        private static readonly Color DotBadColor = Color.FromRgb(0xC4, 0x2B, 0x1C);
+        private static readonly Color DotOffColor = Color.FromRgb(0xC7, 0xD2, 0xD4);
+        private static readonly Color DotOnColor = Color.FromRgb(0x1F, 0x7A, 0x4D);
+        private static readonly Color DotWaitColor = Color.FromRgb(0xA8, 0x64, 0x00);
+        private static readonly Color DotBadColor = Color.FromRgb(0xB9, 0x3A, 0x2E);
 
         // A colour change on a status dot is a state change: it crossfades (200 ms, ease-out)
         // instead of snapping, unless the user asked Windows for no animations.
@@ -340,22 +328,23 @@ namespace CatalogBridge
         {
             Settings settings;
             try { settings = Settings.Load(); }
-            catch (Exception ex) { ShowStatus("Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message, Bad); return; }
+            catch (Exception ex) { MirrorStatusText.Text = "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message; MirrorStatusText.Foreground = Bad; return; }
 
             bool turningOn = !settings.OrderAcceptanceEnabled;
             if (turningOn)
             {
-                if (License.Blocked(Module.Orders, out string why)) { ShowStatus(why, Bad); return; }
+                if (License.Blocked(Module.Orders, out string why)) { MirrorStatusText.Text = why; MirrorStatusText.Foreground = Bad; return; }
                 if (!settings.IsApiConfigured || !settings.IsDatabaseConfigured)
                 {
-                    ShowStatus("Το πρόγραμμα δεν έχει ρυθμιστεί ακόμα — ανοίξτε τις Ρυθμίσεις (κάτω αριστερά).", Warn);
+                    MirrorStatusText.Text = "Το πρόγραμμα δεν έχει ρυθμιστεί ακόμα. Ανοίξτε τις Ρυθμίσεις, κάτω αριστερά.";
+                    MirrorStatusText.Foreground = Warn;
                     return;
                 }
                 var sure = MessageBox.Show(
                     "Να περιμένει κάθε online παραγγελία την έγκρισή σας;\n\n" +
-                    "Το PointToOrder θα σταματήσει να δέχεται παραγγελίες μόνο του. Κάθε νέα παραγγελία εμφανίζεται εδώ: " +
-                    "με «Αποδοχή» (και τα λεπτά της) γίνεται παραγγελία στο ταμείο και ο πελάτης βλέπει «δεκτή, έτοιμη στις …»· " +
-                    "με «Απόρριψη» δεν φτάνει ποτέ στο ταμείο και ο πελάτης βλέπει τον λόγο σας. Το ίδιο ισχύει αν απαντήσετε " +
+                    "Το PointToOrder θα σταματήσει να δέχεται παραγγελίες μόνο του. Κάθε νέα παραγγελία ανοίγει μπροστά σας: " +
+                    "με «Αποδοχή» (και τα λεπτά της) γίνεται παραγγελία στο ταμείο και ο πελάτης βλέπει πότε θα είναι έτοιμη. " +
+                    "Με «Απόρριψη» δεν φτάνει ποτέ στο ταμείο και ο πελάτης βλέπει τον λόγο. Το ίδιο ισχύει αν απαντήσετε " +
                     "από την οθόνη online παραγγελιών του Orexsys.\n\n" +
                     "Όσο αυτό το πρόγραμμα είναι κλειστό, οι παραγγελίες περιμένουν στο ταμείο (και ο πελάτης βλέπει «σε αναμονή») " +
                     "μέχρι να ξανανοίξει ή να απαντήσετε από το Orexsys.\n\nΣυνέχεια;",
@@ -381,73 +370,11 @@ namespace CatalogBridge
 
             settings.OrderAcceptanceEnabled = turningOn;
             try { Settings.Save(settings); }
-            catch (Exception ex) { ShowStatus("Η αποθήκευση απέτυχε: " + ex.Message, Bad); return; }
+            catch (Exception ex) { MirrorStatusText.Text = "Η αποθήκευση απέτυχε: " + ex.Message; MirrorStatusText.Foreground = Bad; return; }
             CustomerDirectory.Log($"mirror: switched {(turningOn ? "ON (platform AUTO_ACCEPT_ORDERS=false)" : "OFF (platform AUTO_ACCEPT_ORDERS=true)")}");
 
             ShowMirrorState(settings);
             Mirror?.Apply(settings);
-        }
-
-        // ---- till orders → PointToOrder, automatic ------------------------------------------
-
-        // Wired by MainWindow, which owns the service so it keeps running on every screen.
-        public TillOrderSyncService? TillSync { get; set; }
-
-        public void ShowTillSyncState(Settings settings)
-        {
-            bool on = settings.TillOrderSyncEnabled;
-            TillSyncButton.Content = on ? "Απενεργοποίηση" : "Ενεργοποίηση";
-            TillSyncDot.Background = on && License.CanWrite(Module.Orders) ? DotOn : DotOff;
-            TillSyncStateText.Text = on
-                ? $"Ενεργό από {settings.TillOrderSyncSince:dd/MM/yyyy}: κάθε κλειστή παραγγελία του ταμείου για πελάτη με " +
-                  "λογαριασμό PointToOrder στέλνεται μόνη της στο ιστορικό του (μόνο αν είναι ολόιδια — ίδια προϊόντα, ίδιες τιμές)."
-                : "Ανενεργό. Με την ενεργοποίηση, οι παραγγελίες του ταμείου από σήμερα και μετά στέλνονται μόνες τους στο " +
-                  "PointToOrder, στο ιστορικό του πελάτη.";
-        }
-
-        public void ShowTillSyncStatus(string message) => TillSyncStatusText.Text = message;
-
-        private void TillSyncButton_Click(object sender, RoutedEventArgs e)
-        {
-            Settings settings;
-            try { settings = Settings.Load(); }
-            catch (Exception ex) { ShowStatus("Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message, Bad); return; }
-
-            if (!settings.TillOrderSyncEnabled)
-            {
-                if (License.Blocked(Module.Orders, out string why)) { ShowStatus(why, Bad); return; }
-                if (!settings.IsDatabaseConfigured || !settings.IsApiConfigured)
-                {
-                    ShowStatus("Το πρόγραμμα δεν έχει ρυθμιστεί ακόμα — ανοίξτε τις Ρυθμίσεις (κάτω αριστερά).", Warn);
-                    return;
-                }
-                if (!settings.EmailOrderCorrelation)
-                {
-                    ShowStatus("Πρώτα ενεργοποιήστε στις Ρυθμίσεις την «Αντιστοίχιση παραγγελιών με e-mail» — χωρίς αυτήν οι " +
-                               "παραγγελίες που στέλνονται θα ξαναγύριζαν στο ταμείο.", Warn);
-                    return;
-                }
-                var sure = MessageBox.Show(
-                    "Να στέλνονται αυτόματα οι παραγγελίες του ταμείου στο PointToOrder;\n\n" +
-                    $"Από σήμερα ({DateTime.Today:dd/MM/yyyy}) και μετά, κάθε κλειστή παραγγελία πελάτη που έχει λογαριασμό " +
-                    "PointToOrder θα εμφανίζεται και στο ιστορικό του εκεί, ως πληρωμένη στο κατάστημα. Παλιότερες παραγγελίες " +
-                    "δεν στέλνονται. Παραγγελία με προϊόν που δεν υπάρχει online, ή με άλλη τιμή, δεν στέλνεται και καταγράφεται.",
-                    "Παραγγελίες ταμείου → PointToOrder", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
-                if (sure != MessageBoxResult.Yes) return;
-
-                settings.TillOrderSyncEnabled = true;
-                settings.TillOrderSyncSince = DateTime.Today;
-            }
-            else
-            {
-                settings.TillOrderSyncEnabled = false;
-            }
-
-            try { Settings.Save(settings); }
-            catch (Exception ex) { ShowStatus("Η αποθήκευση απέτυχε: " + ex.Message, Bad); return; }
-
-            ShowTillSyncState(settings);
-            TillSync?.Apply(settings);
         }
 
         private async Task SyncAsync()
@@ -710,15 +637,16 @@ namespace CatalogBridge
             }
         }
 
-        private static readonly Brush Normal = new SolidColorBrush(Color.FromRgb(0x6B, 0x72, 0x80));
-        private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(0x16, 0x80, 0x3C));
-        private static readonly Brush Warn = new SolidColorBrush(Color.FromRgb(0xB4, 0x53, 0x09));
-        private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(0xC4, 0x2B, 0x1C));
+        private static readonly Brush Normal = new SolidColorBrush(Color.FromRgb(0x5E, 0x6E, 0x72));
+        private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(0x1F, 0x7A, 0x4D));
+        private static readonly Brush Warn = new SolidColorBrush(Color.FromRgb(0xA8, 0x64, 0x00));
+        private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(0xB9, 0x3A, 0x2E));
 
         private void ShowStatus(string message, Brush colour)
         {
             StatusText.Text = message;
             StatusText.Foreground = colour;
+            StatusText.Visibility = message.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 }

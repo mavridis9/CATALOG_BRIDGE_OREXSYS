@@ -189,9 +189,9 @@ namespace CatalogBridge
             UpdateButton();
         }
 
-        private static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(0x1F, 0x29, 0x37));
-        private static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(0x9C, 0xA3, 0xAF));
-        private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(0x2F, 0x6C, 0x43));
-        private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(0xA6, 0x3A, 0x22));
+        private static readonly Brush Ink = new SolidColorBrush(Color.FromRgb(0x17, 0x26, 0x2A));
+        private static readonly Brush Muted = new SolidColorBrush(Color.FromRgb(0x93, 0xA2, 0xA5));
+        private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(0x1F, 0x7A, 0x4D));
+        private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(0xB9, 0x3A, 0x2E));
     }
 }

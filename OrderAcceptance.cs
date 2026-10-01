@@ -65,28 +65,47 @@ namespace CatalogBridge
             foreach (var o in data.EnumerateArray())
             {
                 if (S(o, "status") != "SUBMITTED") continue;
-                var lines = new List<PendingLine>();
-                if (o.TryGetProperty("orderItems", out var items) && items.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var it in items.EnumerateArray())
-                    {
-                        // A nested option (hierarchyLevel CHILD) belongs to the line above it, as the
-                        // connector folds it (EFOD.OPTIONS); the till sees «ΠΙΤΑ ΓΥΡΟΣ (ΠΑΚΕΤΟ|ΧΛ)».
-                        bool child = S(it, "hierarchyLevel") == "CHILD" || S(it, "parentOfferId").Length > 0 && S(it, "parentOfferId") != "0";
-                        string name = S(it, "itemName").Length > 0 ? S(it, "itemName") : S(it, "shortDescription");
-                        if (child && lines.Count > 0)
-                        {
-                            var parent = lines[^1];
-                            lines[^1] = parent with { Options = parent.Options.Length == 0 ? name : parent.Options + "|" + name };
-                            continue;
-                        }
-                        lines.Add(new PendingLine(N(it, "quantity") is decimal q && q > 0 ? (int)Math.Round(q) : 1, name, "", N(it, "totalDiscountedPrice") ?? 0m));
-                    }
-                }
+                var lines = Lines(o);
                 list.Add(new PendingOrder(S(o, "uuid"), S(o, "orderToken"), S(o, "customerName"), N(o, "totalDiscountedPrice") ?? 0m,
                     D(o, "submittedAt") ?? D(o, "createdAt") ?? DateTime.MinValue, D(o, "wishTime"), S(o, "deliveryMethod"), S(o, "comment"), lines));
             }
             return list.OrderBy(p => p.SubmittedAt).ToList();
+        }
+
+        // The lines of one order (a search row or the full order). A nested option (hierarchyLevel
+        // CHILD) belongs to the line above it, as the connector folds it (EFOD.OPTIONS): the till
+        // sees «ΠΙΤΑ ΓΥΡΟΣ (ΠΑΚΕΤΟ|ΧΛ)».
+        private static List<PendingLine> Lines(JsonElement o)
+        {
+            var lines = new List<PendingLine>();
+            if (!o.TryGetProperty("orderItems", out var items) || items.ValueKind != JsonValueKind.Array) return lines;
+            foreach (var it in items.EnumerateArray())
+            {
+                bool child = S(it, "hierarchyLevel") == "CHILD" || S(it, "parentOfferId").Length > 0 && S(it, "parentOfferId") != "0";
+                string name = S(it, "itemName").Length > 0 ? S(it, "itemName") : S(it, "shortDescription");
+                if (child && lines.Count > 0)
+                {
+                    var parent = lines[^1];
+                    lines[^1] = parent with { Options = parent.Options.Length == 0 ? name : parent.Options + "|" + name };
+                    continue;
+                }
+                int qty = N(it, "quantity") is decimal q && q > 0 ? (int)Math.Round(q) : 1;
+                // The search row carries totalDiscountedPrice; the full order may carry only the
+                // non-discounted total or the unit price (AM-M3, 01/10).
+                decimal total = N(it, "totalDiscountedPrice") is decimal td && td > 0 ? td
+                              : N(it, "totalNonDiscountedPrice") is decimal tn && tn > 0 ? tn
+                              : N(it, "discountedOfferPrice") is decimal du && du > 0 ? du * qty
+                              : (N(it, "offerPrice") ?? 0m) * qty;
+                lines.Add(new PendingLine(qty, name, "", total));
+            }
+            return lines;
+        }
+
+        // GET orders/{uuid}?simplified=false → its lines. orders/search leaves them out (01/10, AM-M3).
+        public static List<PendingLine> ParseOrderLines(string orderJson)
+        {
+            using var doc = JsonDocument.Parse(orderJson);
+            return Lines(doc.RootElement);
         }
 
         // GET orders/last-updates/ORDER → when the platform last touched an order of this store.
@@ -154,8 +173,26 @@ namespace CatalogBridge
                 int totalPages = doc.RootElement.TryGetProperty("totalPages", out var tp) && tp.ValueKind == JsonValueKind.Number ? tp.GetInt32() : 1;
                 if (page + 1 >= totalPages) break;
             }
+
+            // The search leaves the lines out: read each waiting order in full once (cached by
+            // uuid - an order's lines do not change while it waits).
+            for (int i = 0; i < all.Count; i++)
+            {
+                var o = all[i];
+                if (o.Lines.Count > 0) continue;
+                if (!LinesCache.TryGetValue(o.Uuid, out var lines))
+                {
+                    var (st, body) = await api.ProbeGetAsync($"/api/v1/stores/{api.StoreId}/orders/{o.Uuid}?locale=el&simplified=false");
+                    if (st >= 300) continue;   // the ticket still shows the header and the total
+                    lines = ParseOrderLines(body);
+                    LinesCache[o.Uuid] = lines;
+                }
+                all[i] = o with { Lines = lines };
+            }
             return all;
         }
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, List<PendingLine>> LinesCache = new();
 
         // Accept = CLOSED; with the till's minutes, estimatedTime = now + minutes (the customer
         // sees «ready at»). Both keys in one PUT, as the admin screen's «Confirm…» does.

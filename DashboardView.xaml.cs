@@ -104,7 +104,7 @@ namespace CatalogBridge
                 {
                     StatusText.Text = feed.Message;
                     StatusText.Foreground = new System.Windows.Media.SolidColorBrush(
-                        System.Windows.Media.Color.FromRgb(0xC4, 0x2B, 0x1C));
+                        System.Windows.Media.Color.FromRgb(0xB9, 0x3A, 0x2E));
                     return;
                 }
                 StatusText.ClearValue(System.Windows.Controls.TextBlock.ForegroundProperty);

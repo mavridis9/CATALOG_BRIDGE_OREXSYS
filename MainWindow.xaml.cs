@@ -1,15 +1,18 @@
 using System;
 using System.Windows;
+using System.Windows.Media;
 
 namespace CatalogBridge
 {
-    // Thin shell: sidebar navigation on the left, one view on the right. The end user sees
-    // only «Αρχική» (the one-button sync); the technician screens appear when enabled in the
-    // Settings screen. Views are created once and kept alive, so switching screens never
-    // loses loaded data or selections.
+    // Thin shell: the petrol rail on the left, one view on the right. Staff use «Αρχική» (online
+    // orders + the catalogue button), «Αντιστοίχιση παραγγελιών» (everything that rides on the
+    // e-mail correlation: the trigger switch, till orders → PointToOrder, the mismatch check)
+    // and «Πελάτες»; the technician screens appear when enabled in Ρυθμίσεις. Views are created
+    // once and kept alive, so switching screens never loses loaded data or selections.
     public partial class MainWindow : Window
     {
         private readonly SyncView sync = new();
+        private readonly OrdersView orders = new();
         private readonly DashboardView dashboard = new();
         private readonly CompareView compare = new();
         private readonly PushView push = new();
@@ -27,7 +30,7 @@ namespace CatalogBridge
             // The released version, from <Version> in the csproj.
             var version = typeof(MainWindow).Assembly.GetName().Version;
             if (version != null)
-                VersionText.Text = $"Γέφυρα PointToOrder  •  v{version.Major}.{version.Minor}.{version.Build}";
+                VersionText.Text = $"Orexsys ⇄ PointToOrder  v{version.Major}.{version.Minor}.{version.Build}";
 
             dashboard.NavigateRequested += NavigateTo;
             ContentHost.Content = sync;
@@ -39,10 +42,17 @@ namespace CatalogBridge
                     ? Visibility.Visible : Visibility.Collapsed;
             });
 
-            sync.TillSync = tillSync;
-            tillSync.StatusChanged += message => Dispatcher.Invoke(() => sync.ShowTillSyncStatus(message));
-            sync.Mismatches = mismatches;
-            mismatches.Checked += (report, status) => Dispatcher.Invoke(() => sync.ShowMismatches(report, status));
+            orders.TillSync = tillSync;
+            tillSync.StatusChanged += message => Dispatcher.Invoke(() => orders.ShowTillSyncStatus(message));
+            orders.Mismatches = mismatches;
+            mismatches.Checked += (report, status) => Dispatcher.Invoke(() =>
+            {
+                orders.ShowMismatches(report, status);
+                // The mismatch card no longer sits on Αρχική: the rail carries the count.
+                OrdersBadgeText.Text = report.Count.ToString();
+                OrdersBadge.Visibility = report.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            });
+            orders.SettingsChanged += ApplySettings;
             sync.Mirror = mirror;
             mirror.Changed += state => Dispatcher.Invoke(() => sync.ShowMirror(state));
 
@@ -56,6 +66,7 @@ namespace CatalogBridge
             if (ContentHost == null) return;
 
             ContentHost.Content =
+                ReferenceEquals(sender, OrdersNav) ? orders :
                 ReferenceEquals(sender, DashNav) ? dashboard :
                 ReferenceEquals(sender, CompareNav) ? compare :
                 ReferenceEquals(sender, PushNav) ? push :
@@ -86,9 +97,9 @@ namespace CatalogBridge
             ApplySettings();
         }
 
-        // Reflects the settings in the shell: which technician screens exist in the sidebar,
-        // and what the store card says. If the screen currently shown was just hidden, the
-        // user lands back on «Αρχική».
+        // Reflects the settings in the shell: which screens exist in the rail, and what the
+        // foot of the rail says. If the screen currently shown was just hidden, the user lands
+        // back on «Αρχική».
         private void ApplySettings()
         {
             Settings settings;
@@ -108,13 +119,17 @@ namespace CatalogBridge
             bool ordersKnown = License.StateOf(Module.Orders) != LicenseState.NotLicensed;
             bool showCustomers = settings.ShowCustomers && ordersKnown;
 
+            OrdersNav.Visibility = ordersKnown ? Visibility.Visible : Visibility.Collapsed;
             DashNav.Visibility = settings.ShowDashboard ? Visibility.Visible : Visibility.Collapsed;
             CompareNav.Visibility = settings.ShowCompare ? Visibility.Visible : Visibility.Collapsed;
             PushNav.Visibility = settings.ShowPush ? Visibility.Visible : Visibility.Collapsed;
             EficNav.Visibility = settings.ShowEfic ? Visibility.Visible : Visibility.Collapsed;
             CustomersNav.Visibility = showCustomers ? Visibility.Visible : Visibility.Collapsed;
+            TechnicianLabel.Visibility = settings.ShowDashboard || settings.ShowCompare || settings.ShowPush || settings.ShowEfic
+                ? Visibility.Visible : Visibility.Collapsed;
 
             bool currentHidden =
+                (OrdersNav.IsChecked == true && !ordersKnown) ||
                 (DashNav.IsChecked == true && !settings.ShowDashboard) ||
                 (CompareNav.IsChecked == true && !settings.ShowCompare) ||
                 (PushNav.IsChecked == true && !settings.ShowPush) ||
@@ -124,21 +139,21 @@ namespace CatalogBridge
 
             string database = System.IO.Path.GetFileName(settings.Database);
             StoreInfoText.Text = settings.IsApiConfigured
-                ? $"PointToOrder {settings.ApiStoreId}\n{database}"
+                ? $"Κατάστημα PointToOrder {settings.ApiStoreId}\nΒάση {database}"
                 : "Δεν έχει ρυθμιστεί ακόμα";
             LicenceText.Text = License.Summary();
             LicenceText.Foreground = License.Worst() switch
             {
-                LicenseState.Licensed => (System.Windows.Media.Brush)FindResource("MutedBrush"),
-                LicenseState.Grace => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xB2, 0x6A, 0x00)),
-                _ => new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xC4, 0x2B, 0x1C)),
+                LicenseState.Licensed => (Brush)FindResource("RailFaint"),
+                LicenseState.Grace => new SolidColorBrush(Color.FromRgb(0xF0, 0xB6, 0x5A)),
+                _ => new SolidColorBrush(Color.FromRgb(0xF0, 0x8A, 0x7C)),
             };
             sync.ShowLicence();
 
             stockSync.Apply(settings);
             tillSync.Apply(settings);
             mismatches.Apply(settings);
-            sync.ShowTillSyncState(settings);
+            orders.ShowState(settings);
             sync.ShowMirrorState(settings);
             mirror.Apply(settings);
             EnsureEmailCorrelation(settings);
@@ -168,6 +183,7 @@ namespace CatalogBridge
                     else if (result.IsProblem)
                         MessageBox.Show("Η αντιστοίχιση παραγγελιών με e-mail ΔΕΝ είναι ενεργή στο Orexsys:\n\n" +
                                         result.Message, "Γέφυρα Καταλόγου", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    orders.RefreshEmailState();
                 });
             });
         }

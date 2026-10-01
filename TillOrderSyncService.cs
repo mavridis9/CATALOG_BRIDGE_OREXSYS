@@ -98,7 +98,7 @@ namespace CatalogBridge
                 if (state != EfomTriggerGuard.State.Patched)
                 {
                     StatusChanged?.Invoke("Παραγγελίες ταμείου: ΣΤΑΜΑΤΗΜΕΝΟ — η προστασία επιστροφής δεν είναι ενεργή στο Orexsys " +
-                                          "(Ρυθμίσεις → Αντιστοίχιση παραγγελιών με e-mail).");
+                                          "(ενεργοποιήστε την «Αντιστοίχιση με το e-mail του πελάτη» παραπάνω).");
                     return;
                 }
 

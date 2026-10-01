@@ -67,8 +67,8 @@ namespace CatalogBridge
             private void Raise(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
 
-        private static readonly Brush MutedBrush = new SolidColorBrush(Color.FromRgb(0x6B, 0x72, 0x80));
-        private static readonly Brush WarnBrush = new SolidColorBrush(Color.FromRgb(0xB4, 0x53, 0x09));
+        private static readonly Brush MutedBrush = new SolidColorBrush(Color.FromRgb(0x5E, 0x6E, 0x72));
+        private static readonly Brush WarnBrush = new SolidColorBrush(Color.FromRgb(0xA8, 0x64, 0x00));
 
         private readonly Settings settings;
         private readonly bool initialAll;

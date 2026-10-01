@@ -319,10 +319,10 @@ namespace CatalogBridge
             DeactivateButton.IsEnabled = !busy && loaded;
         }
 
-        private static readonly Brush Normal = new SolidColorBrush(Color.FromRgb(0x6B, 0x72, 0x80));
-        private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(0x16, 0x80, 0x3C));
-        private static readonly Brush Warn = new SolidColorBrush(Color.FromRgb(0xB4, 0x53, 0x09));
-        private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(0xC4, 0x2B, 0x1C));
+        private static readonly Brush Normal = new SolidColorBrush(Color.FromRgb(0x5E, 0x6E, 0x72));
+        private static readonly Brush Good = new SolidColorBrush(Color.FromRgb(0x1F, 0x7A, 0x4D));
+        private static readonly Brush Warn = new SolidColorBrush(Color.FromRgb(0xA8, 0x64, 0x00));
+        private static readonly Brush Bad = new SolidColorBrush(Color.FromRgb(0xB9, 0x3A, 0x2E));
 
         private void ShowStatus(string message, Brush colour)
         {

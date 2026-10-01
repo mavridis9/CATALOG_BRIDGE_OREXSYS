@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CatalogBridge.Tests
@@ -47,6 +48,36 @@ namespace CatalogBridge.Tests
             StringAssert.Contains(list[1].Title, "Παραλαβή, το συντομότερο");
             StringAssert.Contains(list[0].Title, "Διανομή, για 02/10");
             StringAssert.Contains(list[0].Items, "2× ΠΙΤΑ ΚΟΤΟΓΥΡΟΣ");
+        }
+
+        // orders/search does not carry the lines (seen live 01/10, AM-M3): the ticket reads them
+        // from the full order, GET orders/{uuid}?simplified=false.
+        [TestMethod]
+        public void ParseOrderLines_FromTheFullOrder()
+        {
+            const string full = @"{""uuid"":""u-1"",""orderToken"":""AM-M3"",""status"":""SUBMITTED"",
+                ""orderItems"":[{""itemName"":""ΠΙΤΑ ΓΥΡΟΣ"",""quantity"":2,""totalDiscountedPrice"":8.00,""hierarchyLevel"":""PARENT""},
+                                {""itemName"":""ΠΑΚΕΤΟ"",""quantity"":1,""totalDiscountedPrice"":0,""hierarchyLevel"":""CHILD"",""parentOfferId"":27132},
+                                {""shortDescription"":""ΚΟΚΑ ΚΟΛΑ"",""quantity"":1,""totalDiscountedPrice"":1.50}]}";
+            var lines = OrderAcceptance.ParseOrderLines(full);
+            Assert.AreEqual(2, lines.Count);
+            Assert.AreEqual("ΠΙΤΑ ΓΥΡΟΣ", lines[0].Name);
+            Assert.AreEqual(2, lines[0].Quantity);
+            Assert.AreEqual("ΠΑΚΕΤΟ", lines[0].Options);
+            Assert.AreEqual("ΚΟΚΑ ΚΟΛΑ", lines[1].Name);
+            Assert.AreEqual(1.50m, lines[1].Total);
+            Assert.AreEqual(0, OrderAcceptance.ParseOrderLines(@"{""uuid"":""x""}").Count);
+        }
+
+        // The full order's line (AM-M3, 01/10) has no totalDiscountedPrice: the price is in
+        // totalNonDiscountedPrice / discountedOfferPrice.
+        [TestMethod]
+        public void ParseOrderLines_PriceFallsBackToWhatTheFullOrderCarries()
+        {
+            var a = OrderAcceptance.ParseOrderLines(@"{""orderItems"":[{""itemName"":""ΠΙΤΑ ΓΥΡΟΣ"",""quantity"":1,""offerPrice"":4.00,""discountedOfferPrice"":4.00,""totalNonDiscountedPrice"":4.00,""hierarchyLevel"":""PARENT""}]}");
+            Assert.AreEqual(4.00m, a.Single().Total);
+            var b = OrderAcceptance.ParseOrderLines(@"{""orderItems"":[{""itemName"":""ΠΙΤΑ"",""quantity"":3,""discountedOfferPrice"":2.50}]}");
+            Assert.AreEqual(7.50m, b.Single().Total);
         }
 
         [TestMethod]

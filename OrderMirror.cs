@@ -111,6 +111,9 @@ namespace CatalogBridge
             return null;
         }
 
+        // The accept button names its outcome (and changes with the minutes chosen).
+        public static string AcceptLabel(int minutes) => minutes > 0 ? $"Αποδοχή, έτοιμη σε {minutes}′" : "Αποδοχή";
+
         // «Not accepted, yet placed in Orexsys»: a row still waiting at the till while the platform
         // order is already rejected or cancelled must be voided (-1) before anyone raises it.
         public static bool ShouldVoidAtTill(TillRow row, string platformStatus) =>

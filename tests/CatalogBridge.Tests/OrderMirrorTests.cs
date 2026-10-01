@@ -182,6 +182,37 @@ namespace CatalogBridge.Tests
         }
 
         [TestMethod]
+        public void WaitingRow_CarriesWhatTheTicketShows()
+        {
+            var now = new DateTime(2026, 10, 1, 11, 30, 0, DateTimeKind.Utc);
+            var order = Order("T6-E8") with
+            {
+                Customer = "Stavros Mavridis", Total = 6.5m, Comment = "χωρίς κρεμμύδι",
+                Lines = new List<PendingLine> { new(2, "ΠΙΤΑ ΓΥΡΟΣ", "ΠΑΚΕΤΟ|ΧΛ", 6.5m) },
+            };
+            var row = new WaitingRow(new WaitingOrder(order, Row(1), now));
+            Assert.AreEqual("Stavros Mavridis", row.Customer);
+            Assert.AreEqual("6,50 €", row.TotalText);
+            Assert.AreEqual("Παραλαβή, το συντομότερο", row.HowWhen);
+            Assert.AreEqual("χωρίς κρεμμύδι", row.Comment);
+            Assert.IsTrue(row.HasComment);
+            var line = row.Lines.Single();
+            Assert.AreEqual("2×", line.QtyText);
+            Assert.AreEqual("ΠΙΤΑ ΓΥΡΟΣ", line.Name);
+            Assert.AreEqual("ΠΑΚΕΤΟ, ΧΛ", line.OptionsText);
+            Assert.AreEqual("6,50", line.PriceText);
+            StringAssert.StartsWith(row.SubmittedText, "Ήρθε ");
+            Assert.IsFalse(new WaitingRow(new WaitingOrder(Order(), Row(1), now)).HasComment);
+        }
+
+        [TestMethod]
+        public void AcceptLabel_SaysWhatHappens()
+        {
+            Assert.AreEqual("Αποδοχή, έτοιμη σε 20′", OrderMirror.AcceptLabel(20));
+            Assert.AreEqual("Αποδοχή", OrderMirror.AcceptLabel(0));
+        }
+
+        [TestMethod]
         public void Register_RoundTripsTodayOnly()
         {
             string file = Path.Combine(Path.GetTempPath(), "mirror-test-" + Guid.NewGuid().ToString("N") + ".txt");

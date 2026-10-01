@@ -81,7 +81,7 @@ namespace CatalogBridge
         // account (customerEmail in EFOM.JSON matched to CUST.EMAIL; phone as fallback) - done by
         // EfomTriggerGuard patching Orexsys's EFOM_BIUD_TRG. On: applied on save and re-checked at
         // every start. Off: the trigger is left alone (removal is an explicit button).
-        public bool EmailOrderCorrelation { get; init; }
+        public bool EmailOrderCorrelation { get; set; }
 
         // Till orders sent to PointToOrder automatically (TillOrderSyncService), from the day the
         // home-page switch was turned on - older orders are left alone.
