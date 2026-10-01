@@ -162,10 +162,12 @@ namespace CatalogBridge
         public void ShowMirrorState(Settings settings)
         {
             bool on = settings.OrderAcceptanceEnabled;
+            WaitingRow.DefaultMinutes = settings.AcceptMinutes;
             MirrorButton.Content = on ? "Απενεργοποίηση" : "Ενεργοποίηση";
             MirrorStateText.Text = on
-                ? "Ενεργό: κάθε online παραγγελία περιμένει μέχρι το ταμείο να τη δεχτεί ή να την απορρίψει στην οθόνη " +
-                  "online παραγγελιών του Orexsys. Η απάντηση περνάει μόνη της στο PointToOrder και ο πελάτης ενημερώνεται."
+                ? "Ενεργό: κάθε online παραγγελία περιμένει εδώ. Με «Αποδοχή» (και τα λεπτά της) περνάει στο ταμείο ως " +
+                  "παραγγελία και ο πελάτης ενημερώνεται· με «Απόρριψη» δεν φτάνει ποτέ στο ταμείο και ο πελάτης βλέπει τον λόγο. " +
+                  "Ό,τι αποφασιστεί στην οθόνη online παραγγελιών του Orexsys περνάει κι αυτό μόνο του στο PointToOrder."
                 : "Ανενεργό: το PointToOrder δέχεται κάθε παραγγελία μόνο του, όπως πάντα.";
             WaitingList.ItemsSource ??= waitingRows;
             if (!on)
@@ -218,6 +220,103 @@ namespace CatalogBridge
                 : Mirror?.IsRunning == true ? DotOnColor : DotOffColor);
         }
 
+        // ---- the decision, made here (owner, 01/10 evening) --------------------------------
+        // Αποδοχή: the till first (the connector's row 1 → 2 with the minutes - the vendor trigger
+        // raises the till order), then the platform (CLOSED + ready time). Απόρριψη: the till
+        // (1 → -1, so nobody raises it; skipped when the row is not there yet - the service voids
+        // it on arrival), then the platform (REJECTED + the reason the customer reads). If the
+        // platform call fails after the till changed, the mirror tells the platform on a later
+        // tick - the row is 2 / -1 by then - so the customer is never left wrong for long.
+
+        private async void AcceptHere_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is not WaitingRow row || !row.CanAccept) return;
+            if (License.Blocked(Module.Orders, out string why)) { MirrorStatusText.Text = why; MirrorStatusText.Foreground = Bad; return; }
+            Settings settings;
+            try { settings = Settings.Load(); }
+            catch (Exception ex) { MirrorStatusText.Text = "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message; MirrorStatusText.Foreground = Bad; return; }
+
+            int minutes = row.Minutes;
+            if (minutes != settings.AcceptMinutes) { settings.AcceptMinutes = minutes; try { Settings.Save(settings); } catch { } }
+
+            row.Busy = true;
+            MirrorStatusText.Text = $"{row.Token}: αποδοχή στο ταμείο...";
+            MirrorStatusText.Foreground = Normal;
+            long? ordmId;
+            try { ordmId = await OrderMirror.AcceptAtTillAsync(settings, row.EfomId, minutes); }
+            catch (Exception ex)
+            {
+                row.Busy = false;
+                CustomerDirectory.Log($"accept: {row.Token} at the till FAILED - {ex.Message}");
+                MirrorStatusText.Text = $"{row.Token}: {ex.Message}";
+                MirrorStatusText.Foreground = Bad;
+                if (Mirror != null) await Mirror.RefreshAsync();
+                return;
+            }
+            CustomerDirectory.Log($"accept: {row.Token} accepted at the till from here ({minutes}′) → EFOM {row.EfomId} status 2, ORDM {ordmId?.ToString() ?? "(not yet)"}");
+            MirrorStatusText.Text = $"{row.Token}: δεκτή στο ταμείο{(ordmId is long o ? $" (παραγγελία #{o})" : "")} · ενημέρωση PointToOrder...";
+            try
+            {
+                using var api = new PointToOrderApiClient(settings);
+                await OrderAcceptance.AcceptAsync(api, row.Uuid, minutes > 0 ? DateTime.UtcNow.AddMinutes(minutes) : null);
+                CustomerDirectory.Log($"accept: {row.Token} → CLOSED on the platform, ready in {minutes}′");
+            }
+            catch (Exception ex)
+            {
+                CustomerDirectory.Log($"accept: {row.Token} platform FAILED - {ex.Message} (the mirror will retry)");
+                MirrorStatusText.Text = $"{row.Token}: δεκτή στο ταμείο, αλλά το PointToOrder δεν ενημερώθηκε ακόμα ({ex.Message}) — θα ξαναπροσπαθήσει μόνο του.";
+                MirrorStatusText.Foreground = Warn;
+            }
+            if (Mirror != null) await Mirror.RefreshAsync();
+        }
+
+        private async void RejectHere_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as FrameworkElement)?.DataContext is not WaitingRow row || row.Leaving) return;
+            if (License.Blocked(Module.Orders, out string why)) { MirrorStatusText.Text = why; MirrorStatusText.Foreground = Bad; return; }
+            var ask = new RejectReasonWindow(row.Token + " · " + row.Who, row.Items) { Owner = Window.GetWindow(this) };
+            if (ask.ShowDialog() != true) return;
+            Settings settings;
+            try { settings = Settings.Load(); }
+            catch (Exception ex) { MirrorStatusText.Text = "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message; MirrorStatusText.Foreground = Bad; return; }
+
+            row.Busy = true;
+            MirrorStatusText.Foreground = Normal;
+            if (row.CanAccept)   // the row is at the till and still waits: void it there first
+            {
+                MirrorStatusText.Text = $"{row.Token}: απόρριψη στο ταμείο...";
+                try
+                {
+                    await OrderMirror.RejectAtTillAsync(settings, row.EfomId);
+                    CustomerDirectory.Log($"reject: {row.Token} voided at the till from here (EFOM {row.EfomId} → -1)");
+                }
+                catch (Exception ex)
+                {
+                    row.Busy = false;
+                    CustomerDirectory.Log($"reject: {row.Token} at the till FAILED - {ex.Message}");
+                    MirrorStatusText.Text = $"{row.Token}: {ex.Message}";
+                    MirrorStatusText.Foreground = Bad;
+                    if (Mirror != null) await Mirror.RefreshAsync();
+                    return;
+                }
+            }
+            MirrorStatusText.Text = $"{row.Token}: ενημέρωση PointToOrder...";
+            try
+            {
+                using var api = new PointToOrderApiClient(settings);
+                await OrderAcceptance.RejectAsync(api, row.Uuid, ask.Reason);
+                CustomerDirectory.Log($"reject: {row.Token} → REJECTED on the platform - {ask.Reason}");
+            }
+            catch (Exception ex)
+            {
+                CustomerDirectory.Log($"reject: {row.Token} platform FAILED - {ex.Message}");
+                MirrorStatusText.Text = $"{row.Token}: το PointToOrder δεν ενημερώθηκε ({ex.Message}).";
+                MirrorStatusText.Foreground = Bad;
+                row.Busy = false;
+            }
+            if (Mirror != null) await Mirror.RefreshAsync();
+        }
+
         private static readonly Color DotOffColor = Color.FromRgb(0xC9, 0xCE, 0xD9);
         private static readonly Color DotOnColor = Color.FromRgb(0x16, 0x80, 0x3C);
         private static readonly Color DotWaitColor = Color.FromRgb(0xB4, 0x53, 0x09);
@@ -249,12 +348,13 @@ namespace CatalogBridge
                     return;
                 }
                 var sure = MessageBox.Show(
-                    "Να περιμένει κάθε online παραγγελία την απόφαση του ταμείου;\n\n" +
-                    "Το PointToOrder θα σταματήσει να δέχεται παραγγελίες μόνο του. Η παραγγελία φτάνει στο ταμείο όπως πάντα· " +
-                    "όταν το ταμείο τη δεχτεί (με τα λεπτά της) ή την απορρίψει στην οθόνη online παραγγελιών του Orexsys, " +
-                    "το PointToOrder ενημερώνεται μόνο του και ο πελάτης το βλέπει.\n\n" +
-                    "Όσο αυτό το πρόγραμμα είναι κλειστό, το ταμείο παίρνει κανονικά τις παραγγελίες — μόνο ο πελάτης " +
-                    "βλέπει «σε αναμονή» μέχρι να ξανανοίξει.\n\nΣυνέχεια;",
+                    "Να περιμένει κάθε online παραγγελία την έγκρισή σας;\n\n" +
+                    "Το PointToOrder θα σταματήσει να δέχεται παραγγελίες μόνο του. Κάθε νέα παραγγελία εμφανίζεται εδώ: " +
+                    "με «Αποδοχή» (και τα λεπτά της) γίνεται παραγγελία στο ταμείο και ο πελάτης βλέπει «δεκτή, έτοιμη στις …»· " +
+                    "με «Απόρριψη» δεν φτάνει ποτέ στο ταμείο και ο πελάτης βλέπει τον λόγο σας. Το ίδιο ισχύει αν απαντήσετε " +
+                    "από την οθόνη online παραγγελιών του Orexsys.\n\n" +
+                    "Όσο αυτό το πρόγραμμα είναι κλειστό, οι παραγγελίες περιμένουν στο ταμείο (και ο πελάτης βλέπει «σε αναμονή») " +
+                    "μέχρι να ξανανοίξει ή να απαντήσετε από το Orexsys.\n\nΣυνέχεια;",
                     "Online παραγγελίες", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
                 if (sure != MessageBoxResult.Yes) return;
             }

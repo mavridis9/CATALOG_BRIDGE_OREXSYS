@@ -7,10 +7,10 @@ namespace CatalogBridge
     {
         public string Reason { get; private set; } = "";
 
-        public RejectReasonWindow(PendingOrder order)
+        public RejectReasonWindow(string title, string items)
         {
             InitializeComponent();
-            OrderText.Text = order.Title + "\n" + order.Items;
+            OrderText.Text = title + "\n" + items;
             ReasonBox.SelectedIndex = 0;
             Loaded += (s, e) => ReasonBox.Focus();
         }

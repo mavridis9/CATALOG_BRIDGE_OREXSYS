@@ -64,16 +64,36 @@
                                                        Foreground="{StaticResource BadBrush}" TextWrapping="Wrap"
                                                        Visibility="{Binding HasHint, Converter={StaticResource BoolToVis}}"/>
                                         </StackPanel>
-                                        <Border Grid.Column="1" Style="{StaticResource Pill}" VerticalAlignment="Top" Margin="0,1,0,0">
-                                            <Border.Background>
-                                                <SolidColorBrush x:Name="PillBg" Color="#EEF0FE"/>
-                                            </Border.Background>
-                                            <TextBlock x:Name="PillText" Text="{Binding StateText}" FontSize="12.5" FontWeight="SemiBold">
-                                                <TextBlock.Foreground>
-                                                    <SolidColorBrush x:Name="PillInk" Color="#4F46E5"/>
-                                                </TextBlock.Foreground>
-                                            </TextBlock>
-                                        </Border>
+                                        <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                            <Border Style="{StaticResource Pill}" HorizontalAlignment="Right" Margin="0,1,0,0">
+                                                <Border.Background>
+                                                    <SolidColorBrush x:Name="PillBg" Color="#EEF0FE"/>
+                                                </Border.Background>
+                                                <TextBlock x:Name="PillText" Text="{Binding StateText}" FontSize="12.5" FontWeight="SemiBold">
+                                                    <TextBlock.Foreground>
+                                                        <SolidColorBrush x:Name="PillInk" Color="#4F46E5"/>
+                                                    </TextBlock.Foreground>
+                                                </TextBlock>
+                                            </Border>
+                                            <!-- The decision, made here: minutes · Αποδοχή · Απόρριψη. Hidden once the row is leaving. -->
+                                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0" HorizontalAlignment="Right"
+                                                        Visibility="{Binding Deciding, Converter={StaticResource BoolToVis}}">
+                                                <ComboBox x:Name="MinutesBox" Width="78" FontSize="13" VerticalAlignment="Center" Margin="0,0,8,0"
+                                                          SelectedValuePath="Tag" SelectedValue="{Binding Minutes, Mode=TwoWay}"
+                                                          IsEnabled="{Binding CanAccept}" ToolTip="Σε πόσα λεπτά θα είναι έτοιμη">
+                                                    <ComboBoxItem Content="10′" Tag="10"/>
+                                                    <ComboBoxItem Content="15′" Tag="15"/>
+                                                    <ComboBoxItem Content="20′" Tag="20"/>
+                                                    <ComboBoxItem Content="30′" Tag="30"/>
+                                                    <ComboBoxItem Content="45′" Tag="45"/>
+                                                    <ComboBoxItem Content="60′" Tag="60"/>
+                                                </ComboBox>
+                                                <Button Content="Αποδοχή" Style="{StaticResource PrimaryButton}" Padding="18,7" MinWidth="104"
+                                                        IsEnabled="{Binding CanAccept}" ToolTip="{Binding AcceptBlock}" Click="AcceptHere_Click"/>
+                                                <Button Content="Απόρριψη" Style="{StaticResource DangerButton}" Padding="14,7" MinWidth="96"
+                                                        Margin="8,0,0,0" Click="RejectHere_Click"/>
+                                            </StackPanel>
+                                        </StackPanel>
                                     </Grid>
                                 </Border>
                                 <!-- The pill's colour follows the row's level with a short crossfade (200 ms, ease-out):

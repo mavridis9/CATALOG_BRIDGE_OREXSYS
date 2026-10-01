@@ -17,6 +17,14 @@ namespace CatalogBridge
         private string stateText = "";
         private int level;
         private string hint = "";
+        private bool canAccept;
+        private long efomId;
+        private string acceptBlock = "";
+        private int minutes = DefaultMinutes;
+        private bool busy;
+
+        // The minutes a new row offers (the shop's last choice, Settings.AcceptMinutes).
+        public static int DefaultMinutes { get; set; } = 20;
 
         public WaitingRow(WaitingOrder w)
         {
@@ -33,19 +41,34 @@ namespace CatalogBridge
         public bool HasHint => Hint.Length > 0;
         public bool Leaving { get; private set; }
 
+        // Αποδοχή here flips the connector's row, so it exists only while that row waits.
+        public bool CanAccept { get => canAccept; private set => Set(ref canAccept, value); }
+        public long EfomId { get => efomId; private set => Set(ref efomId, value); }
+        public string AcceptBlock { get => acceptBlock; private set => Set(ref acceptBlock, value); }
+
+        // What the minutes picker holds (two-way bound) and whether the buttons are shown.
+        public int Minutes { get => minutes; set => Set(ref minutes, value); }
+        public bool Busy { get => busy; set { if (Set(ref busy, value)) Raise(nameof(Deciding)); } }
+        public bool Deciding => !Leaving && !Busy;
+
         public void Update(WaitingOrder w)
         {
             if (Leaving) return;
             StateText = w.StateText;
             Level = w.Level;
             Hint = w.Hint;
+            EfomId = w.Row?.EfomId ?? 0;
+            AcceptBlock = OrderMirror.CanAcceptHere(w) ?? "";
+            CanAccept = AcceptBlock.Length == 0;
         }
 
         // The till answered: say so, then the board lets the row go.
         public void Leave(MirrorEvent? verdict)
         {
             Leaving = true;
+            Raise(nameof(Deciding));
             Hint = "";
+            CanAccept = false;
             if (verdict == null) { StateText = "Έφυγε"; return; }
             bool accepted = verdict.Action == MirrorAction.Accept;
             StateText = accepted ? (verdict.Minutes > 0 ? $"Δεκτή · {verdict.Minutes}′" : "Δεκτή") : "Απορρίφθηκε";

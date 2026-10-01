@@ -119,6 +119,20 @@ namespace CatalogBridge.Tests
         }
 
         [TestMethod]
+        public void WaitingRow_KnowsWhetherAcceptIsPossibleHere()
+        {
+            var now = new DateTime(2026, 10, 1, 11, 30, 0, DateTimeKind.Utc);
+            var row = new WaitingRow(new WaitingOrder(Order(), null, now));
+            Assert.IsFalse(row.CanAccept);
+            Assert.AreEqual(0L, row.EfomId);
+            row.Update(new WaitingOrder(Order(), Row(1) with { EfomId = 47 }, now));
+            Assert.IsTrue(row.CanAccept);
+            Assert.AreEqual(47L, row.EfomId);
+            row.Update(new WaitingOrder(Order(), Row(2) with { EfomId = 47 }, now));
+            Assert.IsFalse(row.CanAccept);
+        }
+
+        [TestMethod]
         public void Register_RoundTripsTodayOnly()
         {
             string file = Path.Combine(Path.GetTempPath(), "mirror-test-" + Guid.NewGuid().ToString("N") + ".txt");

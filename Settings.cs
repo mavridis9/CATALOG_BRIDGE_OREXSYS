@@ -92,6 +92,9 @@ namespace CatalogBridge
         // (OrderAcceptanceService; the switch on Αρχική also flips the store's AUTO_ACCEPT_ORDERS).
         public bool OrderAcceptanceEnabled { get; set; }
 
+        // The minutes offered by default when accepting an online order here (last choice kept).
+        public int AcceptMinutes { get; set; } = 20;
+
         private HashSet<long>? syncCategories;
         private Dictionary<long, long>? categoryPriceLists;
 
@@ -207,6 +210,7 @@ namespace CatalogBridge
                 TillOrderSyncEnabled = Get("TillOrderSyncEnabled", "false") == "true",
                 TillOrderSyncSince = DateTime.TryParseExact(Get("TillOrderSyncSince", ""), "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out var since) ? since : DateTime.Today,
                 OrderAcceptanceEnabled = Get("OrderAcceptanceEnabled", "false") == "true",
+                AcceptMinutes = int.TryParse(Get("AcceptMinutes", "20"), out int am) && am >= 0 ? am : 20,
                 SizeMode = Enum.TryParse(Get("SizeMode", "SeparateItems"), true, out SizeMode sm)
                     ? sm : SizeMode.SeparateItems,
                 ShowDashboard = Get("ShowDashboard", "false") == "true",
@@ -269,6 +273,7 @@ namespace CatalogBridge
                 "; Αποδοχή/απόρριψη των online παραγγελιών από το ταμείο (κουμπί στην Αρχική).",
                 "; true = το PointToOrder ΔΕΝ αποδέχεται μόνο του (AUTO_ACCEPT_ORDERS=false στο κατάστημα).",
                 $"OrderAcceptanceEnabled={(settings.OrderAcceptanceEnabled ? "true" : "false")}",
+                $"AcceptMinutes={settings.AcceptMinutes}",
                 "",
                 "; Οθόνες τεχνικού (true = εμφανίζονται στο πλάι).",
                 $"ShowDashboard={(settings.ShowDashboard ? "true" : "false")}",

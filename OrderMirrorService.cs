@@ -84,6 +84,28 @@ namespace CatalogBridge
 
                 var rows = OrderMirror.Index(await OrderMirror.LoadRowsAsync(settings, storeCode, DateTime.Now.AddDays(-2)));
                 var now = DateTime.UtcNow;
+
+                // The fix for «not accepted, yet placed in Orexsys»: a row still waiting at the till
+                // whose platform order is already rejected / cancelled is voided (-1) before anyone
+                // at the till can raise it. The platform's full list (every status) is read only
+                // when a waiting row exists that the SUBMITTED list does not explain.
+                var unexplained = rows.Values.Where(r => r.Waiting && !r.TaggedCopy && !pending.Any(p => p.Token == r.Token)).ToList();
+                if (unexplained.Count > 0)
+                {
+                    var platform = await OrderMismatch.LoadPlatformAsync(api, DateTime.Now.AddDays(-3));
+                    foreach (var r in unexplained)
+                    {
+                        var p = platform.FirstOrDefault(x => x.Token == r.Token);
+                        if (p == null || !OrderMirror.ShouldVoidAtTill(r, p.Status)) continue;
+                        try
+                        {
+                            await OrderMirror.RejectAtTillAsync(settings, r.EfomId);
+                            CustomerDirectory.Log($"mirror: {r.Token} is {p.Status} on the platform - voided at the till (EFOM {r.EfomId} → -1)");
+                            OrderMirror.Remember(OrderMirror.RegisterFile, new MirrorEvent(now, r.Token, MirrorAction.Reject, 0));
+                        }
+                        catch (Exception ex) { CustomerDirectory.Log($"mirror: {r.Token} void at the till FAILED - {ex.Message}"); }
+                    }
+                }
                 var still = new List<PendingOrder>();
                 int mirrored = 0;
                 foreach (var order in pending)

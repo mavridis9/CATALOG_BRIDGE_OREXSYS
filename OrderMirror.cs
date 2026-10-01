@@ -174,6 +174,52 @@ namespace CatalogBridge
             return list;
         });
 
+        // ---- Orexsys: the till's own two updates, made from here --------------------------------
+
+        // Αποδοχή inside the tool = exactly what the till's accept screen does: the connector's
+        // row goes 1 → 2 with the minutes, and the vendor trigger raises the till order. Guarded
+        // by STATUS = 1 and an exact row count: a second click, a row the till already answered,
+        // or a stale screen change nothing. Returns the ORDMID the trigger produced (null if the
+        // database set it later or not at all - reported, not fatal).
+        public static Task<long?> AcceptAtTillAsync(Settings settings, long efomId, int minutes) => Task.Run(() =>
+        {
+            using var connection = new FbConnection(settings.ToConnectionString());
+            connection.Open();
+            using var transaction = connection.BeginTransaction();
+            using var update = new FbCommand("UPDATE EFOM SET STATUS = 2, ACCEPTMIN = @min WHERE EFOMID = @id AND STATUS = 1", connection, transaction);
+            update.Parameters.Add("@min", FbDbType.Integer).Value = Math.Max(0, minutes);
+            update.Parameters.Add("@id", FbDbType.BigInt).Value = efomId;
+            int rows = update.ExecuteNonQuery();
+            if (rows != 1)
+            {
+                transaction.Rollback();
+                throw new InvalidOperationException("Η παραγγελία δεν περιμένει πια στο ταμείο (έχει ήδη απαντηθεί) — τίποτα δεν άλλαξε.");
+            }
+            transaction.Commit();
+            using var read = new FbCommand("SELECT ORDMID FROM EFOM WHERE EFOMID = @id", connection);
+            read.Parameters.Add("@id", FbDbType.BigInt).Value = efomId;
+            object? ordm = read.ExecuteScalar();
+            return ordm == null || ordm == DBNull.Value ? (long?)null : Convert.ToInt64(ordm);
+        });
+
+        // Απόρριψη inside the tool, or the void of a platform-rejected row: 1 → -1, the
+        // connector's own cancel value, so nobody at the till can raise it. Same guard.
+        public static Task RejectAtTillAsync(Settings settings, long efomId) => Task.Run(() =>
+        {
+            using var connection = new FbConnection(settings.ToConnectionString());
+            connection.Open();
+            using var transaction = connection.BeginTransaction();
+            using var update = new FbCommand("UPDATE EFOM SET STATUS = -1 WHERE EFOMID = @id AND STATUS = 1", connection, transaction);
+            update.Parameters.Add("@id", FbDbType.BigInt).Value = efomId;
+            int rows = update.ExecuteNonQuery();
+            if (rows != 1)
+            {
+                transaction.Rollback();
+                throw new InvalidOperationException("Η παραγγελία δεν περιμένει πια στο ταμείο (έχει ήδη απαντηθεί) — τίποτα δεν άλλαξε.");
+            }
+            transaction.Commit();
+        });
+
         // ---- the mirror itself ----------------------------------------------------------------
 
         // Applies one till decision to the platform. Returns what it did (None when nothing to do).
