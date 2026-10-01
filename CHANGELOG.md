@@ -19,6 +19,10 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   pushes a manually accepted order to the Twinsoft relay (the connector could not reach its
   database that day) — `docs/ORDER_ACCEPTANCE.md` §3 says exactly what to check. Use on 1110
   only until then.
+- **Same afternoon, measured (doc §6–§8):** the relay gets every order at submission, so P2O
+  acceptance only informs the customer; the hold is on the Orexsys side (EFOM STATUS 1). The
+  validation link's request and answer rules were captured through a temporary tunnel: only
+  `200 {"valid":false,"message"}` refuses; timeout ≈ 5 s and errors are fail-open. No code change.
 
 ## [1.1.2] — 2026-09-29
 

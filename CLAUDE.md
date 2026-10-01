@@ -275,3 +275,12 @@ git-ignored and excluded from publish. The sidebar shows the version.
   accepted (CLOSED) order to the Twinsoft relay** — tokens 96-54 / 97-TN / 34-TX are the probe.
   Rule 5's PointToOrder write surface now includes the store setting and order status
   CLOSED/REJECTED. Never leave the switch on for a shop whose app is closed: nobody accepts.
+  **Answered the same afternoon (doc §6–§8):** the relay receives EVERY order at submission,
+  rejected ones included — P2O acceptance only informs the customer. Rows then wait in EFOM at
+  STATUS 1 until something on the Orexsys side sets 2 (instant on 30/09 with Orexsys open; what
+  does it — connector `DSTS=1` or a till screen — is the open question). The **validation link**
+  was measured through a Cloudflare quick tunnel: POST `{storeId, orderUuid, deliveryMethod,
+  totals, customerName/Email/Phone, address, orderItems[{offer{id,name},quantity,prices}]}`;
+  only `200 {"valid":false,"message"}` refuses (customer sees the message, order stays DRAFT,
+  nothing reaches the relay); any other answer, a 5 s timeout or a dead endpoint = accepted
+  (fail-open). It is an automatic gate, not a human one; needs a fixed public HTTPS address.

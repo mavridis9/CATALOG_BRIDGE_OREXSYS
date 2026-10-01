@@ -123,7 +123,81 @@ Until this is settled the switch should be used **only on 1110**.
 * Rejected orders never reach the till; accepted ones reach it through the connector exactly as
   before — **if §3 is answered yes**.
 
-## 6. Test harness
+## 6. §3 answered (01/10, 14:54): the relay gets EVERY order at submission
+
+The owner pointed the connector at the database and started it. Within one poll the relay
+handed over **all four**: 96-54, 97-TN, 34-TX (accepted) **and M3-93 (rejected)**. So
+PointToOrder pushes to Twinsoft **when the order is submitted**, before and regardless of the
+shop's answer. Accepting/rejecting on PointToOrder (§4) tells the customer, but does not
+decide what reaches the till.
+
+Second observation: those four rows sit in `EFOM` with **`STATUS 1`, no `ORDMID`**, while
+every row of 30/09 got `STATUS 2` and its ORDM **in the same second** it was inserted
+(EFOM 33 ins 14:30:12 → ORDM 58 otime 14:30:13). The visible difference is that Orexsys
+itself was not open on 01/10. So the 1 → 2 step (the vendor trigger raises the till order on
+that change) is done on the Orexsys side while it runs — a question for the owner / Twinsoft:
+is it the connector (`DSTS=1` in its ini?) or a till screen (EFOM has `ACCEPTMIN`)? If the
+till has its own «accept online order» screen, the acceptance belongs there and this app's
+job becomes mirroring it to PointToOrder (EFOM 1→2 ⇒ `CLOSED`, EFOM → −1 ⇒ `REJECTED`).
+
+## 7. The validation link, measured (01/10, 15:02–15:06, store 1110)
+
+Owner: *«I need to place the link into P2O»*. Done with a temporary **Cloudflare quick tunnel**
+(`winget install Cloudflare.cloudflared`; `cloudflared tunnel --url http://127.0.0.1:8077`
+→ a random `https://….trycloudflare.com` address) to a tiny local listener
+(`scratchpad/HookCapture`, ASP.NET minimal API) that logged every request and answered
+according to a mode file. Settings used: `VALIDATION_ENDPOINT_LINK=<tunnel>/validate` and
+`EXTERNAL_ORDER_VALIDATION=true` (both via the settings PUT; both cleared again afterwards).
+
+**What PointToOrder sends** — `POST <link>`, `Content-Type: application/json; charset=utf-8`,
+`User-Agent: okhttp/4.12.0`, from 51.89.64.82 (DE), at the moment of the submit call
+(`PUT v2 … status SUBMITTED`), *before* the order gets a token:
+
+```json
+{"storeId":1110,"orderUuid":"93f934f1-…","deliveryMethod":"NO_LOCATION",
+ "totalDiscountedPrice":4.00,"totalNonDiscountedPrice":4.00,"paymentMethod":null,
+ "customerName":"ΔΟΚΙΜΗ VALIDATION OK","customerEmail":null,"customerPhoneNumber":null,
+ "address":{},
+ "orderItems":[{"uuid":"479e27e7-…","quantity":1,"offerPrice":4.00,"totalPrice":4.00,
+                "comment":null,"offer":{"id":27132,"name":"ΠΙΤΑ ΓΥΡΟΣ","countAgainstSlot":0}}]}
+```
+
+No wishTime, no order comment, no option lines in this sample (the item had none) — the full
+order can be read back by `orderUuid` with `GET …/orders/{uuid}` if needed.
+
+**What our answer does** (one order per row):
+
+| Listener answer | Submit result |
+|---|---|
+| `200 {"valid":true,…}` | order submitted → `CLOSED` (auto-accept on) |
+| `200 {"valid":false,"message":"Δοκιμή A"}` | **submit refused: HTTP 400, `errors[0].message` = our text, code `INVALID_INPUT`; order stays `DRAFT`, no token, nothing pushed to the relay** |
+| `200 {"success":false,"message":…}` | accepted — ignored |
+| `200 {"message":…}` only | accepted — ignored |
+| `200` empty body | accepted |
+| `400 {…}` | accepted |
+| `500` | accepted |
+| answer after 40 s | accepted after ≈ 5 s — **timeout ≈ 5 s, then fail-open** |
+| endpoint down (tunnel 502) | accepted at once — **fail-open** |
+
+So: the **only** way to stop an order is `HTTP 200` with `"valid": false` and a `message`
+(the customer sees the message). Everything else, including our server being down, lets the
+order through. A person cannot answer within 5 s, so this is an **automatic** gate (shop
+closed, product off at the POS, outside hours, amount limits), not «the till accepts».
+
+Cost of the test: 12 extra orders on 1110 (9Z-NN, XT-K9, AP-86, K2-7X, 3K-4N, 64-NZ, ZN-78,
+TM-64, B8-43 submitted; three refused drafts), all pushed to the relay → EFOM STATUS 1 rows
+on Stavros.FDB while the connector runs.
+
+## 8. Where this leaves the design
+
+| Goal | Mechanism | Needs |
+|---|---|---|
+| customer sees accepted / rejected + reason | §4 as built (P2O status) | nothing more |
+| order does not reach the till until someone accepts | the Orexsys side (§6: EFOM 1→2 is where the hold already exists) — mirror the decision to P2O from this app | owner/Twinsoft to say what sets STATUS 2 |
+| refuse automatically before the customer finishes (closed, out of stock, …) | §7 validation link, `{"valid":false,"message"}` within 5 s | a fixed public HTTPS address: hosting (the licence server) or a permanent tunnel as a Windows service; and it is fail-open |
+| push instead of polling | «Endpoint Submission Link» (not tested) | same public address |
+
+## 9. Test harness
 
 `scratchpad/AcceptTest` (not in the repo; the same calls are in `OrderAcceptance.cs`): modes
 `settings`, `off|on`, `order [name]`, `status <uuid>`, `setstatus <uuid> <STATUS>`,
