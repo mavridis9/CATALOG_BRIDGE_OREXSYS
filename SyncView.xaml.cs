@@ -254,6 +254,7 @@ namespace CatalogBridge
                 return;
             }
             CustomerDirectory.Log($"accept: {row.Token} accepted at the till from here ({minutes}′) → EFOM {row.EfomId} status 2, ORDM {ordmId?.ToString() ?? "(not yet)"}");
+            OrderMirror.RememberOnce(OrderMirror.RegisterFile, new MirrorEvent(DateTime.UtcNow, row.Token, MirrorAction.Accept, minutes));
             MirrorStatusText.Text = $"{row.Token}: δεκτή στο ταμείο{(ordmId is long o ? $" (παραγγελία #{o})" : "")} · ενημέρωση PointToOrder...";
             try
             {
@@ -272,7 +273,7 @@ namespace CatalogBridge
 
         private async void RejectHere_Click(object sender, RoutedEventArgs e)
         {
-            if ((sender as FrameworkElement)?.DataContext is not WaitingRow row || row.Leaving) return;
+            if ((sender as FrameworkElement)?.DataContext is not WaitingRow row || row.Leaving || !row.CanReject) return;
             if (License.Blocked(Module.Orders, out string why)) { MirrorStatusText.Text = why; MirrorStatusText.Foreground = Bad; return; }
             var ask = new RejectReasonWindow(row.Token + " · " + row.Who, row.Items) { Owner = Window.GetWindow(this) };
             if (ask.ShowDialog() != true) return;
@@ -289,6 +290,7 @@ namespace CatalogBridge
                 {
                     await OrderMirror.RejectAtTillAsync(settings, row.EfomId);
                     CustomerDirectory.Log($"reject: {row.Token} voided at the till from here (EFOM {row.EfomId} → -1)");
+                    OrderMirror.RememberOnce(OrderMirror.RegisterFile, new MirrorEvent(DateTime.UtcNow, row.Token, MirrorAction.Reject, 0));
                 }
                 catch (Exception ex)
                 {
@@ -306,6 +308,8 @@ namespace CatalogBridge
                 using var api = new PointToOrderApiClient(settings);
                 await OrderAcceptance.RejectAsync(api, row.Uuid, ask.Reason);
                 CustomerDirectory.Log($"reject: {row.Token} → REJECTED on the platform - {ask.Reason}");
+                if (!row.CanAccept)   // the row was not at the till: registered here, at the platform step
+                    OrderMirror.RememberOnce(OrderMirror.RegisterFile, new MirrorEvent(DateTime.UtcNow, row.Token, MirrorAction.Reject, 0));
             }
             catch (Exception ex)
             {

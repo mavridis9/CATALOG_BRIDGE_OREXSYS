@@ -7,19 +7,23 @@ using FirebirdSql.Data.FirebirdClient;
 
 namespace CatalogBridge
 {
-    // The mirror (owner decision 01/10/2026, after the measurements in docs/ORDER_ACCEPTANCE.md):
-    // the TILL decides. Every online order reaches Orexsys at submission anyway (the relay does
-    // not wait for anyone) and waits there as EFOM STATUS 1 until the till's own «online
-    // orders» screen accepts it (STATUS 2, ACCEPTMIN minutes, the vendor trigger raises the till
-    // order) or rejects it (STATUS -1). This app only MIRRORS that decision to PointToOrder, so
-    // the customer learns it: 2 → CLOSED (+ estimatedTime from ACCEPTMIN), -1 → REJECTED.
-    // With the switch on, PointToOrder's auto-accept is off, so until the till answers the
-    // customer sees «waiting» — honest, and nothing is lost if this app is closed: the till still
-    // gets every order; only the customer's screen lags until the app runs again.
+    // Online orders, decided in this app and applied to BOTH sides (owner, 01/10/2026 - see
+    // docs/ORDER_ACCEPTANCE.md §6-§10). Every online order reaches Orexsys at submission anyway
+    // (the relay does not wait for anyone) and waits there as the connector's EFOM row, STATUS 1.
+    //   Αποδοχή here  = that row 1 → 2 with the minutes (AcceptAtTillAsync - the till's own accept;
+    //                   the vendor trigger raises the till order), then PointToOrder CLOSED + ETA.
+    //   Απόρριψη here = that row 1 → -1 (RejectAtTillAsync - nobody raises it), then REJECTED.
+    //   The till's own online-orders screen may answer first: then the row is already 2 / -1 and
+    //   this app only MIRRORS it to PointToOrder (Decide / MirrorAsync).
+    //   A waiting row whose platform order is already rejected / cancelled is voided (-1) by the
+    //   service (ShouldVoidAtTill / RowsToVoid) - «not accepted, yet placed» can no longer happen.
+    // With the switch on, PointToOrder's auto-accept is off, so until someone answers the
+    // customer sees «waiting». Orexsys first, platform second: the customer never hears
+    // «accepted» for an order the till could not raise.
     //
-    // Idempotence comes from PointToOrder itself: only an order that is still SUBMITTED (or
-    // RECEIVED) on the platform is ever touched (Decide). Till-sent copies (loop-guard tag) are
-    // never mirrored: their -1 is the guard, not a rejection.
+    // Idempotence: only an order that is still SUBMITTED (or RECEIVED) on the platform is ever
+    // told anything (Decide), and the two Orexsys updates are guarded by STATUS = 1 + exact row
+    // count. Till-sent copies (loop-guard tag) are never decided: their -1 is the guard.
 
     public sealed record TillRow(string Token, int Status, int AcceptMin, DateTime Insdate, bool TaggedCopy, long? OrdmId, long EfomId = 0)
     {
@@ -96,14 +100,48 @@ namespace CatalogBridge
             return null;
         }
 
+        // Απόρριψη here: fine while the till has not answered (row absent - platform only; or
+        // waiting - voided first). Never for a row the till already raised or rejected (the
+        // customer would read «rejected» while the kitchen cooks), never for a till copy.
+        public static string? CanRejectHere(WaitingOrder w)
+        {
+            if (w.Row == null) return null;
+            if (w.Row.TaggedCopy) return "Είναι αντίγραφο παραγγελίας του ταμείου — δεν γίνεται απόρριψη.";
+            if (!w.Row.Waiting) return w.Row.Accepted ? "Έχει ήδη γίνει δεκτή στο ταμείο — ακυρώστε την από τις παραγγελίες του πελάτη." : "Έχει ήδη απορριφθεί στο ταμείο.";
+            return null;
+        }
+
         // «Not accepted, yet placed in Orexsys»: a row still waiting at the till while the platform
         // order is already rejected or cancelled must be voided (-1) before anyone raises it.
         public static bool ShouldVoidAtTill(TillRow row, string platformStatus) =>
             row.Waiting && !row.TaggedCopy && platformStatus is "REJECTED" or "CANCELLED" or "DELETED";
 
+        // The waiting rows to void now, and the tokens whose platform status explains them
+        // (CLOSED etc. - no need to ask again until the platform moves). Rows in the SUBMITTED
+        // list are the board's; unknown tokens stay unexplained and are asked again.
+        public static (List<TillRow> ToVoid, HashSet<string> Explained) RowsToVoid(
+            IEnumerable<TillRow> rows, IEnumerable<PendingOrder> pending, IReadOnlyDictionary<string, string> platformStatus)
+        {
+            var onBoard = new HashSet<string>(pending.Select(p => p.Token), StringComparer.OrdinalIgnoreCase);
+            var toVoid = new List<TillRow>();
+            var explained = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var r in rows.Where(r => r.Waiting && !r.TaggedCopy && !onBoard.Contains(r.Token)))
+            {
+                if (!platformStatus.TryGetValue(r.Token, out var status)) continue;
+                if (ShouldVoidAtTill(r, status)) toVoid.Add(r);
+                else explained.Add(r.Token);
+            }
+            return (toVoid, explained);
+        }
+
+        // A till order the app itself sent to the platform (comment tag): the shop's own history
+        // entry, never something to decide. The service closes it; the board skips it.
+        public static bool IsTillCopy(PendingOrder order) => TillOrderSender.TagToExternalId(order.Comment) != null;
+
         // The platform orders that are still waiting, paired with their till row (by token).
         public static List<WaitingOrder> Pair(IEnumerable<PendingOrder> pending, IReadOnlyDictionary<string, TillRow> rows, DateTime nowUtc) =>
-            pending.Select(p => new WaitingOrder(p, rows.TryGetValue(p.Token, out var r) ? r : null, nowUtc))
+            pending.Where(p => !IsTillCopy(p))
+                   .Select(p => new WaitingOrder(p, rows.TryGetValue(p.Token, out var r) ? r : null, nowUtc))
                    .OrderBy(w => w.Order.SubmittedAt).ToList();
 
         public static Dictionary<string, TillRow> Index(IEnumerable<TillRow> rows)
@@ -144,7 +182,17 @@ namespace CatalogBridge
         public static void Remember(string file, MirrorEvent e) =>
             File.AppendAllText(file, $"{e.When:O}|{e.Token}|{e.Action}|{e.Minutes}{Environment.NewLine}");
 
-        // ---- Orexsys (read-only) --------------------------------------------------------------
+        public static bool AlreadyRemembered(IEnumerable<MirrorEvent> today, string token) =>
+            today.Any(e => string.Equals(e.Token, token, StringComparison.OrdinalIgnoreCase));
+
+        // Register once: the decision is made where Orexsys changed; a retry of the platform
+        // call (service) must not count it again.
+        public static void RememberOnce(string file, MirrorEvent e)
+        {
+            if (!AlreadyRemembered(LoadToday(file, DateTime.Today), e.Token)) Remember(file, e);
+        }
+
+        // ---- Orexsys: read the connector's rows ----------------------------------------------
 
         // The connector's rows for this store since `since`. The loop-guard tag is looked for in
         // the JSON blob with POSITION - never CAST it (Firebird throws past the cast length).

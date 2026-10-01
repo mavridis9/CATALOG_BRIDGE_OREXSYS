@@ -91,7 +91,7 @@
                                                 <Button Content="Αποδοχή" Style="{StaticResource PrimaryButton}" Padding="18,7" MinWidth="104"
                                                         IsEnabled="{Binding CanAccept}" ToolTip="{Binding AcceptBlock}" Click="AcceptHere_Click"/>
                                                 <Button Content="Απόρριψη" Style="{StaticResource DangerButton}" Padding="14,7" MinWidth="96"
-                                                        Margin="8,0,0,0" Click="RejectHere_Click"/>
+                                                        Margin="8,0,0,0" IsEnabled="{Binding CanReject}" ToolTip="{Binding RejectBlock}" Click="RejectHere_Click"/>
                                             </StackPanel>
                                         </StackPanel>
                                     </Grid>

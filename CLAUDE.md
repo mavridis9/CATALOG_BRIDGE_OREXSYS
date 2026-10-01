@@ -69,7 +69,11 @@ Mavridis (`mavridis9`).
    And — «Ακύρωση παραγγελίας» in the customer's orders window (owner decision 22/09/2026) —
    `EXECUTE PROCEDURE CANCELORDER`, Orexsys's own cancellation, the same call ΔΙΑΧΕΙΡΙΣΗ makes.
    PointToOrder additionally: create customer, send invitation, create order (till orders →
-   history), cancel order (admin `PUT status=CANCELLED`).
+   history), cancel order (admin `PUT status=CANCELLED`), accept/reject order (`CLOSED` +
+   `estimatedTime` / `REJECTED` + `rejectReason`), the store setting `AUTO_ACCEPT_ORDERS`.
+   And — «Online παραγγελίες», owner decision 01/10/2026 — **`EFOM.STATUS` (1 → 2 with
+   `ACCEPTMIN`, or 1 → −1) on the connector's own row**, guarded by `STATUS = 1` + exact row
+   count: the till's own accept/reject path (`OrderMirror.AcceptAtTillAsync` / `RejectAtTillAsync`).
    **Nothing else in the database is ever written.**
 6. **`hierarchyLevel: "PARENT"` is required** on create; missing fields surface as `500`.
 7. **New offers are born hidden** (`isSellable=false`); the flow flips them visible when

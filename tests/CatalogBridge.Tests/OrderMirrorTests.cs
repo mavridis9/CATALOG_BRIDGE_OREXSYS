@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace CatalogBridge.Tests
@@ -93,6 +94,54 @@ namespace CatalogBridge.Tests
             StringAssert.Contains(OrderMirror.CanAcceptHere(new WaitingOrder(Order(), Row(2), now))!, "ήδη");
             StringAssert.Contains(OrderMirror.CanAcceptHere(new WaitingOrder(Order(), Row(-1), now))!, "ήδη");
             Assert.IsNotNull(OrderMirror.CanAcceptHere(new WaitingOrder(Order(), Row(1, tagged: true), now)));
+        }
+
+        [TestMethod]
+        public void CanRejectHere_NeverForARaisedOrderOrATillCopy()
+        {
+            var now = new DateTime(2026, 10, 1, 11, 30, 0, DateTimeKind.Utc);
+            Assert.IsNull(OrderMirror.CanRejectHere(new WaitingOrder(Order(), null, now)));      // not at the till yet: platform only
+            Assert.IsNull(OrderMirror.CanRejectHere(new WaitingOrder(Order(), Row(1), now)));    // waiting: void + platform
+            StringAssert.Contains(OrderMirror.CanRejectHere(new WaitingOrder(Order(), Row(2), now))!, "ήδη");
+            StringAssert.Contains(OrderMirror.CanRejectHere(new WaitingOrder(Order(), Row(-1), now))!, "ήδη");
+            Assert.IsNotNull(OrderMirror.CanRejectHere(new WaitingOrder(Order(), Row(1, tagged: true), now)));
+        }
+
+        [TestMethod]
+        public void TillCopies_NeverReachTheBoard()
+        {
+            // A till order sent to the platform (comment tag) comes back through the relay and
+            // sits SUBMITTED while the switch is on: it is the shop's own history entry, not an
+            // order to decide. The service closes it; the board never shows it.
+            var now = new DateTime(2026, 10, 1, 11, 30, 0, DateTimeKind.Utc);
+            var copy = Order("NN-3K") with { Comment = "[OREXSYS#5] Αγορά στο κατάστημα 01/10/2026 11:00: ΠΙΤΑ ×1 4,00€" };
+            Assert.IsTrue(OrderMirror.IsTillCopy(copy));
+            Assert.IsFalse(OrderMirror.IsTillCopy(Order()));
+            var waiting = OrderMirror.Pair(new[] { copy, Order() }, new Dictionary<string, TillRow>(), now);
+            Assert.AreEqual(1, waiting.Count);
+            Assert.AreEqual("96-54", waiting[0].Order.Token);
+        }
+
+        [TestMethod]
+        public void RowsToVoid_OnlyWaitingUntaggedRowsThePlatformGaveUpOn()
+        {
+            TillRow R(string token, int status, bool tagged = false) => new(token, status, 0, DateTime.Now, tagged, null, 1);
+            var rows = new[] { R("V1", 1), R("K2", 1), R("P3", 1), R("T4", 1, tagged: true), R("A5", 2), R("U6", 1) };
+            var pending = new[] { Order("P3") };
+            var platform = new Dictionary<string, string> { ["V1"] = "REJECTED", ["K2"] = "CLOSED", ["P3"] = "SUBMITTED", ["T4"] = "CANCELLED", ["A5"] = "REJECTED" };
+            var (toVoid, explained) = OrderMirror.RowsToVoid(rows, pending, platform);
+            CollectionAssert.AreEqual(new[] { "V1" }, toVoid.Select(r => r.Token).ToList());
+            // K2 (CLOSED) is explained - it need not be looked up again until the platform moves;
+            // U6 is unknown to the platform (not explained, will be looked up again).
+            CollectionAssert.AreEquivalent(new[] { "K2" }, explained.ToList());
+        }
+
+        [TestMethod]
+        public void Register_DoesNotCountATokenTwice()
+        {
+            var today = new List<MirrorEvent> { new(DateTime.UtcNow, "96-54", MirrorAction.Accept, 15) };
+            Assert.IsTrue(OrderMirror.AlreadyRemembered(today, "96-54"));
+            Assert.IsFalse(OrderMirror.AlreadyRemembered(today, "M3-93"));
         }
 
         [TestMethod]

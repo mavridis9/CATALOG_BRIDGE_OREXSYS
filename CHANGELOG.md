@@ -13,7 +13,12 @@ released version is a git tag `vX.Y.Z` on `master` with the exe attached to the 
   Orexsys first, platform second, each guarded by `STATUS = 1`. The service also voids any waiting
   row whose platform order is already rejected or cancelled (the «not accepted, yet placed»
   fix), and the mirror of the till's own screen stays. Live on 1110: XE-9K → ORDM 59 + CLOSED
-  15′; N2-ZY → −1 + REJECTED. `docs/ORDER_ACCEPTANCE.md` §10. 145 tests.
+  15′; N2-ZY → −1 + REJECTED; the owner rejected T6-E8 from the window. After review: Απόρριψη
+  is refused for a row the till already raised (the customer would read «rejected» while the
+  kitchen cooks) or a till copy; decisions made here count in today's tally; till copies the app
+  itself sent (comment tag) never reach the board and are closed on the platform by the service;
+  the platform's full list is read only once per change, not every 5 s. `docs/ORDER_ACCEPTANCE.md`
+  §10. 152 tests.
 - *(superseded the same evening)* **Online παραγγελίες: the till decides, the app mirrors** (owner, 01/10 afternoon, replacing
   the buttons below the same day). The till's own «online orders» screen accepts (with minutes)
   or rejects; `OrderMirror` reads the connector's EFOM rows and tells PointToOrder — `CLOSED` +

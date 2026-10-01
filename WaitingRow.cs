@@ -18,8 +18,10 @@ namespace CatalogBridge
         private int level;
         private string hint = "";
         private bool canAccept;
+        private bool canReject;
         private long efomId;
         private string acceptBlock = "";
+        private string rejectBlock = "";
         private int minutes = DefaultMinutes;
         private bool busy;
 
@@ -45,6 +47,8 @@ namespace CatalogBridge
         public bool CanAccept { get => canAccept; private set => Set(ref canAccept, value); }
         public long EfomId { get => efomId; private set => Set(ref efomId, value); }
         public string AcceptBlock { get => acceptBlock; private set => Set(ref acceptBlock, value); }
+        public bool CanReject { get => canReject; private set => Set(ref canReject, value); }
+        public string RejectBlock { get => rejectBlock; private set => Set(ref rejectBlock, value); }
 
         // What the minutes picker holds (two-way bound) and whether the buttons are shown.
         public int Minutes { get => minutes; set => Set(ref minutes, value); }
@@ -60,6 +64,8 @@ namespace CatalogBridge
             EfomId = w.Row?.EfomId ?? 0;
             AcceptBlock = OrderMirror.CanAcceptHere(w) ?? "";
             CanAccept = AcceptBlock.Length == 0;
+            RejectBlock = OrderMirror.CanRejectHere(w) ?? "";
+            CanReject = RejectBlock.Length == 0;
         }
 
         // The till answered: say so, then the board lets the row go.
@@ -69,6 +75,7 @@ namespace CatalogBridge
             Raise(nameof(Deciding));
             Hint = "";
             CanAccept = false;
+            CanReject = false;
             if (verdict == null) { StateText = "Έφυγε"; return; }
             bool accepted = verdict.Action == MirrorAction.Accept;
             StateText = accepted ? (verdict.Minutes > 0 ? $"Δεκτή · {verdict.Minutes}′" : "Δεκτή") : "Απορρίφθηκε";
