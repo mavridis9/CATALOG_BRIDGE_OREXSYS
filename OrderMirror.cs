@@ -21,7 +21,7 @@ namespace CatalogBridge
     // RECEIVED) on the platform is ever touched (Decide). Till-sent copies (loop-guard tag) are
     // never mirrored: their -1 is the guard, not a rejection.
 
-    public sealed record TillRow(string Token, int Status, int AcceptMin, DateTime Insdate, bool TaggedCopy, long? OrdmId)
+    public sealed record TillRow(string Token, int Status, int AcceptMin, DateTime Insdate, bool TaggedCopy, long? OrdmId, long EfomId = 0)
     {
         public bool Waiting => Status == 1;
         public bool Accepted => Status == 2;
@@ -85,6 +85,22 @@ namespace CatalogBridge
             return MirrorAction.None;
         }
 
+        // Deciding INSIDE the tool (owner, 01/10 evening): Αποδοχή here flips the connector's row
+        // to 2 - the same update the till's accept screen makes - so it is only possible while
+        // that row exists and still waits. Null = go ahead; otherwise the reason, for the screen.
+        public static string? CanAcceptHere(WaitingOrder w)
+        {
+            if (w.Row == null) return "Δεν έφτασε ακόμα στο ταμείο — περιμένετε λίγο.";
+            if (w.Row.TaggedCopy) return "Είναι αντίγραφο παραγγελίας του ταμείου — δεν γίνεται αποδοχή.";
+            if (!w.Row.Waiting) return w.Row.Accepted ? "Έχει ήδη γίνει δεκτή στο ταμείο." : "Έχει ήδη απορριφθεί στο ταμείο.";
+            return null;
+        }
+
+        // «Not accepted, yet placed in Orexsys»: a row still waiting at the till while the platform
+        // order is already rejected or cancelled must be voided (-1) before anyone raises it.
+        public static bool ShouldVoidAtTill(TillRow row, string platformStatus) =>
+            row.Waiting && !row.TaggedCopy && platformStatus is "REJECTED" or "CANCELLED" or "DELETED";
+
         // The platform orders that are still waiting, paired with their till row (by token).
         public static List<WaitingOrder> Pair(IEnumerable<PendingOrder> pending, IReadOnlyDictionary<string, TillRow> rows, DateTime nowUtc) =>
             pending.Select(p => new WaitingOrder(p, rows.TryGetValue(p.Token, out var r) ? r : null, nowUtc))
@@ -138,7 +154,7 @@ namespace CatalogBridge
             using var connection = new FbConnection(settings.ToConnectionString());
             connection.Open();
             using var command = new FbCommand(@"
-                SELECT ORDERID, STATUS, ACCEPTMIN, INSDATE, ORDMID,
+                SELECT EFOMID, ORDERID, STATUS, ACCEPTMIN, INSDATE, ORDMID,
                        CASE WHEN POSITION(@tag IN JSON) > 0 THEN 1 ELSE 0 END AS TAGGED
                 FROM EFOM
                 WHERE INSDATE >= @since AND UPPER(TRIM(STOREID)) = UPPER(@store) AND ORDERID IS NOT NULL", connection);
@@ -153,7 +169,8 @@ namespace CatalogBridge
                     reader["ACCEPTMIN"] == DBNull.Value ? 0 : Convert.ToInt32(reader["ACCEPTMIN"]),
                     reader["INSDATE"] == DBNull.Value ? DateTime.MinValue : Convert.ToDateTime(reader["INSDATE"]),
                     Convert.ToInt32(reader["TAGGED"]) == 1,
-                    reader["ORDMID"] == DBNull.Value ? null : Convert.ToInt64(reader["ORDMID"])));
+                    reader["ORDMID"] == DBNull.Value ? null : Convert.ToInt64(reader["ORDMID"]),
+                    Convert.ToInt64(reader["EFOMID"])));
             return list;
         });
 

@@ -82,6 +82,42 @@ namespace CatalogBridge.Tests
             Assert.AreEqual(2, new WaitingOrder(Order(submitted: now.AddMinutes(-9)), Row(1), now).Level);
         }
 
+        // ---- deciding INSIDE the tool (owner, 01/10 evening) ---------------------------------
+
+        [TestMethod]
+        public void CanAcceptHere_OnlyWhileTheRowWaitsAtTheTill()
+        {
+            var now = new DateTime(2026, 10, 1, 11, 30, 0, DateTimeKind.Utc);
+            Assert.IsNull(OrderMirror.CanAcceptHere(new WaitingOrder(Order(), Row(1), now)));
+            StringAssert.Contains(OrderMirror.CanAcceptHere(new WaitingOrder(Order(), null, now))!, "ταμείο");
+            StringAssert.Contains(OrderMirror.CanAcceptHere(new WaitingOrder(Order(), Row(2), now))!, "ήδη");
+            StringAssert.Contains(OrderMirror.CanAcceptHere(new WaitingOrder(Order(), Row(-1), now))!, "ήδη");
+            Assert.IsNotNull(OrderMirror.CanAcceptHere(new WaitingOrder(Order(), Row(1, tagged: true), now)));
+        }
+
+        [TestMethod]
+        public void TillRow_CarriesItsEfomId()
+        {
+            var row = new TillRow("96-54", 1, 0, DateTime.Now, false, null, EfomId: 47);
+            Assert.AreEqual(47L, row.EfomId);
+        }
+
+        [TestMethod]
+        public void ShouldVoidAtTill_WhenThePlatformGaveUpOnAWaitingRow()
+        {
+            // «Not accepted, yet placed in Orexsys»: a row that still waits at the till while the
+            // platform order is already rejected or cancelled must be voided (−1) before anyone
+            // at the till can raise it.
+            Assert.IsTrue(OrderMirror.ShouldVoidAtTill(Row(1), "REJECTED"));
+            Assert.IsTrue(OrderMirror.ShouldVoidAtTill(Row(1), "CANCELLED"));
+            Assert.IsTrue(OrderMirror.ShouldVoidAtTill(Row(1), "DELETED"));
+            Assert.IsFalse(OrderMirror.ShouldVoidAtTill(Row(1), "SUBMITTED"));
+            Assert.IsFalse(OrderMirror.ShouldVoidAtTill(Row(1), "CLOSED"));
+            Assert.IsFalse(OrderMirror.ShouldVoidAtTill(Row(2), "REJECTED"));      // already raised: too late, the mismatch check shows it
+            Assert.IsFalse(OrderMirror.ShouldVoidAtTill(Row(-1), "REJECTED"));
+            Assert.IsFalse(OrderMirror.ShouldVoidAtTill(Row(1, tagged: true), "CANCELLED"));
+        }
+
         [TestMethod]
         public void Register_RoundTripsTodayOnly()
         {
