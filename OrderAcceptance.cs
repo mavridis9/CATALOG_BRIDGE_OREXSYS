@@ -157,10 +157,17 @@ namespace CatalogBridge
             return all;
         }
 
-        public static async Task AcceptAsync(PointToOrderApiClient api, string uuid)
+        // Accept = CLOSED; with the till's minutes, estimatedTime = now + minutes (the customer
+        // sees «ready at»). Both keys in one PUT, as the admin screen's «Confirm…» does.
+        public static async Task AcceptAsync(PointToOrderApiClient api, string uuid, DateTime? estimatedUtc = null)
         {
-            var (st, body) = await api.ProbePutAsync($"/api/v2/user/stores/{api.StoreId}/orders/{uuid}",
-                new Dictionary<string, object> { ["status"] = AcceptedStatus, ["keysToUpdate"] = new[] { "status" } });
+            var body0 = new Dictionary<string, object> { ["status"] = AcceptedStatus, ["keysToUpdate"] = new[] { "status" } };
+            if (estimatedUtc is DateTime e)
+            {
+                body0["estimatedTime"] = e.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'");
+                body0["keysToUpdate"] = new[] { "status", "estimatedTime" };
+            }
+            var (st, body) = await api.ProbePutAsync($"/api/v2/user/stores/{api.StoreId}/orders/{uuid}", body0);
             if (st >= 300) throw new PointToOrderException($"Η αποδοχή απέτυχε ({st}): {body}");
         }
 

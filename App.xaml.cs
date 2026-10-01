@@ -14,6 +14,9 @@ namespace CatalogBridge
             // specified." rather than merely returning mangled Greek.
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
+            // Motion durations follow the user's Windows «animations» setting (Motion.cs).
+            Motion.Apply(Resources);
+
             base.OnStartup(e);
         }
 

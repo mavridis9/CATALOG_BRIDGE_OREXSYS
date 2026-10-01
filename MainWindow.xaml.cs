@@ -18,7 +18,7 @@ namespace CatalogBridge
         private readonly StockSyncService stockSync = new();
         private readonly TillOrderSyncService tillSync = new();
         private readonly OrderMismatchService mismatches = new();
-        private readonly OrderAcceptanceService acceptance = new();
+        private readonly OrderMirrorService mirror = new();
 
         public MainWindow()
         {
@@ -43,8 +43,8 @@ namespace CatalogBridge
             tillSync.StatusChanged += message => Dispatcher.Invoke(() => sync.ShowTillSyncStatus(message));
             sync.Mismatches = mismatches;
             mismatches.Checked += (report, status) => Dispatcher.Invoke(() => sync.ShowMismatches(report, status));
-            sync.Acceptance = acceptance;
-            acceptance.Checked += (orders, status, added) => Dispatcher.Invoke(() => sync.ShowPending(orders, status, added));
+            sync.Mirror = mirror;
+            mirror.Changed += state => Dispatcher.Invoke(() => sync.ShowMirror(state));
 
             ApplySettings();
         }
@@ -139,8 +139,8 @@ namespace CatalogBridge
             tillSync.Apply(settings);
             mismatches.Apply(settings);
             sync.ShowTillSyncState(settings);
-            sync.ShowAcceptanceState(settings);
-            acceptance.Apply(settings);
+            sync.ShowMirrorState(settings);
+            mirror.Apply(settings);
             EnsureEmailCorrelation(settings);
         }
 

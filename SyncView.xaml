@@ -8,8 +8,9 @@
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel MaxWidth="900" HorizontalAlignment="Stretch" Margin="0,4,0,40">
 
-            <!-- 0. Online orders accepted/rejected from the till (owner request 01/10/2026) -->
-            <Border x:Name="AcceptanceCard" Style="{StaticResource Card}" Padding="18,14">
+            <!-- 0. Online orders: the till decides, PointToOrder is told (owner, 01/10/2026).
+                 A status board, not a control panel: nothing here needs a click except the switch. -->
+            <Border x:Name="MirrorCard" Style="{StaticResource Card}" Padding="18,14">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -18,52 +19,122 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Margin="0,0,16,0">
                             <StackPanel Orientation="Horizontal">
-                                <Border x:Name="AcceptanceDot" Width="10" Height="10" CornerRadius="5" Background="#C9CED9"
-                                        VerticalAlignment="Center" Margin="0,1,8,0"/>
-                                <TextBlock Text="Αποδοχή παραγγελιών από το ταμείο" FontSize="15" FontWeight="SemiBold"
+                                <Border x:Name="MirrorDot" Width="10" Height="10" CornerRadius="5" VerticalAlignment="Center" Margin="0,1,8,0">
+                                    <Border.Background>
+                                        <SolidColorBrush x:Name="MirrorDotColor" Color="#C9CED9"/>
+                                    </Border.Background>
+                                </Border>
+                                <TextBlock Text="Online παραγγελίες" FontSize="15" FontWeight="SemiBold"
                                            Foreground="{StaticResource InkBrush}"/>
+                                <Border x:Name="MirrorCount" Style="{StaticResource Pill}" Padding="8,1" Margin="10,0,0,0"
+                                        Background="{StaticResource WarnSoft}" Visibility="Collapsed">
+                                    <TextBlock x:Name="MirrorCountText" Text="1" FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{StaticResource WarnBrush}"/>
+                                </Border>
                             </StackPanel>
-                            <TextBlock x:Name="AcceptanceStateText" Text="Ανενεργό" FontSize="12.5" Margin="18,3,0,0"
-                                       Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
-                            <TextBlock x:Name="AcceptanceStatusText" Text="" FontSize="12" Margin="18,6,0,0"
+                            <TextBlock x:Name="MirrorStateText" Text="Ανενεργό" FontSize="12.5" Margin="18,3,0,0"
                                        Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
                         </StackPanel>
-                        <Button Grid.Column="1" x:Name="AcceptanceButton" Content="Ενεργοποίηση" Style="{StaticResource SecondaryButton}"
-                                VerticalAlignment="Center" MinWidth="150" Click="AcceptanceButton_Click"/>
+                        <Button Grid.Column="1" x:Name="MirrorButton" Content="Ενεργοποίηση" Style="{StaticResource SecondaryButton}"
+                                VerticalAlignment="Center" MinWidth="150" Click="MirrorButton_Click"/>
                     </Grid>
 
-                    <!-- The orders waiting for an answer, newest last; one row = one order -->
-                    <ItemsControl x:Name="PendingList" Margin="0,10,0,0" Visibility="Collapsed">
+                    <!-- One row per order still waiting; the pill says where it stands -->
+                    <ItemsControl x:Name="WaitingList" Margin="0,12,0,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="8"
-                                        Padding="14,10" Margin="0,0,0,8" Background="#FFFBEB">
+                                <Border BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="10"
+                                        Padding="14,10" Margin="0,0,0,8" Background="{StaticResource CardBg}"
+                                        Style="{StaticResource EnterRow}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0" Margin="0,0,14,0">
-                                            <TextBlock Text="{Binding Title}" FontSize="14" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource InkBrush}" TextWrapping="Wrap"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Token}" FontSize="14" FontWeight="SemiBold"
+                                                           Foreground="{StaticResource InkBrush}"/>
+                                                <TextBlock Text="{Binding Who}" FontSize="14" Margin="10,0,0,0"
+                                                           Foreground="{StaticResource InkBrush}" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
                                             <TextBlock Text="{Binding Items}" FontSize="13" Margin="0,3,0,0"
-                                                       Foreground="{StaticResource InkBrush}" TextWrapping="Wrap"/>
-                                            <TextBlock Text="{Binding Comment}" FontSize="12.5" Margin="0,3,0,0" FontStyle="Italic"
                                                        Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
-                                            <TextBlock Text="{Binding SubmittedLocal, StringFormat='Παραγγέλθηκε {0:HH:mm}'}"
-                                                       FontSize="12" Margin="0,3,0,0" Foreground="{StaticResource MutedBrush}"/>
+                                            <TextBlock Text="{Binding Hint}" FontSize="12.5" Margin="0,4,0,0"
+                                                       Foreground="{StaticResource BadBrush}" TextWrapping="Wrap"
+                                                       Visibility="{Binding HasHint, Converter={StaticResource BoolToVis}}"/>
                                         </StackPanel>
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Button Content="Αποδοχή" Style="{StaticResource PrimaryButton}" Padding="18,8"
-                                                    MinWidth="110" Click="AcceptOrder_Click"/>
-                                            <Button Content="Απόρριψη" Style="{StaticResource DangerButton}" Padding="14,8"
-                                                    MinWidth="100" Margin="8,0,0,0" Click="RejectOrder_Click"/>
-                                        </StackPanel>
+                                        <Border Grid.Column="1" Style="{StaticResource Pill}" VerticalAlignment="Top" Margin="0,1,0,0">
+                                            <Border.Background>
+                                                <SolidColorBrush x:Name="PillBg" Color="#EEF0FE"/>
+                                            </Border.Background>
+                                            <TextBlock x:Name="PillText" Text="{Binding StateText}" FontSize="12.5" FontWeight="SemiBold">
+                                                <TextBlock.Foreground>
+                                                    <SolidColorBrush x:Name="PillInk" Color="#4F46E5"/>
+                                                </TextBlock.Foreground>
+                                            </TextBlock>
+                                        </Border>
                                     </Grid>
                                 </Border>
+                                <!-- The pill's colour follows the row's level with a short crossfade (200 ms, ease-out):
+                                     0 waiting at the till · 1 take a look · 2 stuck · 3 accepted · 4 rejected -->
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Level}" Value="1">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard Duration="{StaticResource FadeDuration}">
+                                                    <ColorAnimation Storyboard.TargetName="PillBg" Storyboard.TargetProperty="Color" To="#FCF1DF" Duration="{StaticResource FadeDuration}" EasingFunction="{StaticResource EaseOut}"/>
+                                                    <ColorAnimation Storyboard.TargetName="PillInk" Storyboard.TargetProperty="Color" To="#B45309" Duration="{StaticResource FadeDuration}" EasingFunction="{StaticResource EaseOut}"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Level}" Value="2">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <ColorAnimation Storyboard.TargetName="PillBg" Storyboard.TargetProperty="Color" To="#FCE8E6" Duration="{StaticResource FadeDuration}" EasingFunction="{StaticResource EaseOut}"/>
+                                                    <ColorAnimation Storyboard.TargetName="PillInk" Storyboard.TargetProperty="Color" To="#C42B1C" Duration="{StaticResource FadeDuration}" EasingFunction="{StaticResource EaseOut}"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Level}" Value="3">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <ColorAnimation Storyboard.TargetName="PillBg" Storyboard.TargetProperty="Color" To="#E3F3E9" Duration="{StaticResource FadeDuration}" EasingFunction="{StaticResource EaseOut}"/>
+                                                    <ColorAnimation Storyboard.TargetName="PillInk" Storyboard.TargetProperty="Color" To="#16803C" Duration="{StaticResource FadeDuration}" EasingFunction="{StaticResource EaseOut}"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Level}" Value="4">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <ColorAnimation Storyboard.TargetName="PillBg" Storyboard.TargetProperty="Color" To="#FCE8E6" Duration="{StaticResource FadeDuration}" EasingFunction="{StaticResource EaseOut}"/>
+                                                    <ColorAnimation Storyboard.TargetName="PillInk" Storyboard.TargetProperty="Color" To="#C42B1C" Duration="{StaticResource FadeDuration}" EasingFunction="{StaticResource EaseOut}"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <!-- Last line: what is going on, and today's tally -->
+                    <Grid Margin="18,2,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="MirrorStatusText" Grid.Column="0" Text="" FontSize="12"
+                                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="MirrorTodayText" Grid.Column="1" Text="" FontSize="12" Margin="16,0,0,0"
+                                   Foreground="{StaticResource MutedBrush}"/>
+                    </Grid>
                 </StackPanel>
             </Border>
 

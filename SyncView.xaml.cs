@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 
 namespace CatalogBridge
 {
@@ -148,51 +149,91 @@ namespace CatalogBridge
             if (Mismatches != null) await Mismatches.RunNowAsync();
         }
 
-        // ---- online orders accepted / rejected from the till (owner, 01/10/2026) ------------
+        // ---- online orders: the till decides, PointToOrder is told (owner, 01/10/2026) -------
 
         // Wired by MainWindow, which owns the service so it keeps watching on every screen.
-        public OrderAcceptanceService? Acceptance { get; set; }
+        public OrderMirrorService? Mirror { get; set; }
 
-        private List<PendingOrder> pending = new();
+        // Rows are updated IN PLACE (one view-model per order, keyed by uuid) so a refresh every
+        // 5 s never re-creates them - the enter motion plays once, when the order really arrives.
+        private readonly System.Collections.ObjectModel.ObservableCollection<WaitingRow> waitingRows = new();
+        private readonly Dictionary<string, WaitingRow> rowsByUuid = new();
 
-        public void ShowAcceptanceState(Settings settings)
+        public void ShowMirrorState(Settings settings)
         {
             bool on = settings.OrderAcceptanceEnabled;
-            AcceptanceButton.Content = on ? "Απενεργοποίηση" : "Ενεργοποίηση";
-            AcceptanceDot.Background = on && License.CanWrite(Module.Orders) ? DotOn : DotOff;
-            AcceptanceStateText.Text = on
-                ? "Ενεργό: κάθε online παραγγελία περιμένει στο PointToOrder μέχρι να πατήσετε «Αποδοχή» ή «Απόρριψη» εδώ. " +
-                  "Όσο το πρόγραμμα είναι κλειστό, οι παραγγελίες περιμένουν — κανείς δεν τις δέχεται."
+            MirrorButton.Content = on ? "Απενεργοποίηση" : "Ενεργοποίηση";
+            MirrorStateText.Text = on
+                ? "Ενεργό: κάθε online παραγγελία περιμένει μέχρι το ταμείο να τη δεχτεί ή να την απορρίψει στην οθόνη " +
+                  "online παραγγελιών του Orexsys. Η απάντηση περνάει μόνη της στο PointToOrder και ο πελάτης ενημερώνεται."
                 : "Ανενεργό: το PointToOrder δέχεται κάθε παραγγελία μόνο του, όπως πάντα.";
+            WaitingList.ItemsSource ??= waitingRows;
             if (!on)
             {
-                pending = new();
-                PendingList.ItemsSource = null;
-                PendingList.Visibility = Visibility.Collapsed;
-                AcceptanceStatusText.Text = "";
+                waitingRows.Clear();
+                rowsByUuid.Clear();
+                MirrorStatusText.Text = "";
+                MirrorTodayText.Text = "";
+                MirrorCount.Visibility = Visibility.Collapsed;
+                SetDot(MirrorDotColor, DotOffColor);
             }
+            else SetDot(MirrorDotColor, License.CanWrite(Module.Orders) ? DotOnColor : DotOffColor);
         }
 
-        public void ShowPending(List<PendingOrder> orders, string status, List<PendingOrder> added)
+        public void ShowMirror(MirrorState state)
         {
-            pending = orders;
-            PendingList.ItemsSource = orders;
-            PendingList.Visibility = orders.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-            AcceptanceStatusText.Text = status;
-            bool error = status.Contains("σφάλμα") || status.Contains("ΣΤΑΜΑΤΗΜΕΝΟ");
-            AcceptanceStatusText.Foreground = error ? Bad : orders.Count > 0 ? Warn : Normal;
-            AcceptanceDot.Background = error ? DotBad : orders.Count > 0 ? DotWait : Acceptance?.IsRunning == true ? DotOn : DotOff;
-            if (added.Count > 0)
+            WaitingList.ItemsSource ??= waitingRows;
+
+            // Update / add the ones still waiting.
+            var seen = new HashSet<string>();
+            foreach (var w in state.Waiting)
             {
-                // The till must hear it: a new order is money waiting for a click.
-                try { System.Media.SystemSounds.Exclamation.Play(); } catch { }
-                Window.GetWindow(this)?.Activate();
+                seen.Add(w.Order.Uuid);
+                if (rowsByUuid.TryGetValue(w.Order.Uuid, out var row)) row.Update(w);
+                else
+                {
+                    row = new WaitingRow(w);
+                    rowsByUuid[w.Order.Uuid] = row;
+                    waitingRows.Add(row);
+                }
             }
+            // The ones that left: show the till's verdict for a moment, then let the row go.
+            foreach (var row in waitingRows.Where(r => !seen.Contains(r.Uuid) && !r.Leaving).ToList())
+            {
+                var verdict = state.Today.Where(e => e.Token == row.Token).OrderByDescending(e => e.When).FirstOrDefault();
+                row.Leave(verdict);
+                var t = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(verdict == null ? 0.2 : 2.4) };
+                t.Tick += (s, e) => { t.Stop(); waitingRows.Remove(row); rowsByUuid.Remove(row.Uuid); };
+                t.Start();
+            }
+
+            int count = state.Waiting.Count;
+            MirrorCountText.Text = count.ToString();
+            MirrorCount.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            MirrorStatusText.Text = state.Status;
+            MirrorStatusText.Foreground = state.Error ? Bad : Normal;
+            MirrorTodayText.Text = state.TodayText;
+            int worst = state.Waiting.Count == 0 ? 0 : state.Waiting.Max(w => w.Level);
+            SetDot(MirrorDotColor, state.Error || worst == 2 ? DotBadColor : count > 0 ? DotWaitColor
+                : Mirror?.IsRunning == true ? DotOnColor : DotOffColor);
         }
 
-        private static readonly Brush DotWait = new SolidColorBrush(Color.FromRgb(0xB4, 0x53, 0x09));
+        private static readonly Color DotOffColor = Color.FromRgb(0xC9, 0xCE, 0xD9);
+        private static readonly Color DotOnColor = Color.FromRgb(0x16, 0x80, 0x3C);
+        private static readonly Color DotWaitColor = Color.FromRgb(0xB4, 0x53, 0x09);
+        private static readonly Color DotBadColor = Color.FromRgb(0xC4, 0x2B, 0x1C);
 
-        private async void AcceptanceButton_Click(object sender, RoutedEventArgs e)
+        // A colour change on a status dot is a state change: it crossfades (200 ms, ease-out)
+        // instead of snapping, unless the user asked Windows for no animations.
+        private static void SetDot(SolidColorBrush brush, Color to)
+        {
+            if (brush.Color == to) return;
+            if (!Motion.Enabled) { brush.Color = to; return; }
+            brush.BeginAnimation(SolidColorBrush.ColorProperty,
+                new ColorAnimation(to, Motion.Fade) { EasingFunction = Motion.EaseOut });
+        }
+
+        private async void MirrorButton_Click(object sender, RoutedEventArgs e)
         {
             Settings settings;
             try { settings = Settings.Load(); }
@@ -202,23 +243,24 @@ namespace CatalogBridge
             if (turningOn)
             {
                 if (License.Blocked(Module.Orders, out string why)) { ShowStatus(why, Bad); return; }
-                if (!settings.IsApiConfigured)
+                if (!settings.IsApiConfigured || !settings.IsDatabaseConfigured)
                 {
                     ShowStatus("Το πρόγραμμα δεν έχει ρυθμιστεί ακόμα — ανοίξτε τις Ρυθμίσεις (κάτω αριστερά).", Warn);
                     return;
                 }
                 var sure = MessageBox.Show(
-                    "Να περιμένει κάθε online παραγγελία την έγκριση του ταμείου;\n\n" +
-                    "Το PointToOrder θα σταματήσει να δέχεται παραγγελίες μόνο του. Κάθε νέα παραγγελία θα εμφανίζεται εδώ, " +
-                    "με ήχο, και θα περιμένει «Αποδοχή» ή «Απόρριψη» (με αιτιολογία που βλέπει ο πελάτης).\n\n" +
-                    "ΠΡΟΣΟΧΗ: όσο αυτό το πρόγραμμα είναι κλειστό, οι παραγγελίες μένουν σε αναμονή στο PointToOrder και " +
-                    "κανείς δεν τις δέχεται. Απενεργοποιήστε το πριν κλείσετε για πολύ.\n\nΣυνέχεια;",
-                    "Αποδοχή παραγγελιών από το ταμείο", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+                    "Να περιμένει κάθε online παραγγελία την απόφαση του ταμείου;\n\n" +
+                    "Το PointToOrder θα σταματήσει να δέχεται παραγγελίες μόνο του. Η παραγγελία φτάνει στο ταμείο όπως πάντα· " +
+                    "όταν το ταμείο τη δεχτεί (με τα λεπτά της) ή την απορρίψει στην οθόνη online παραγγελιών του Orexsys, " +
+                    "το PointToOrder ενημερώνεται μόνο του και ο πελάτης το βλέπει.\n\n" +
+                    "Όσο αυτό το πρόγραμμα είναι κλειστό, το ταμείο παίρνει κανονικά τις παραγγελίες — μόνο ο πελάτης " +
+                    "βλέπει «σε αναμονή» μέχρι να ξανανοίξει.\n\nΣυνέχεια;",
+                    "Online παραγγελίες", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
                 if (sure != MessageBoxResult.Yes) return;
             }
 
             // The platform first: if its setting does not change, nothing changes here either.
-            AcceptanceButton.IsEnabled = false;
+            MirrorButton.IsEnabled = false;
             try
             {
                 using var api = new PointToOrderApiClient(settings);
@@ -226,59 +268,20 @@ namespace CatalogBridge
             }
             catch (Exception ex)
             {
-                AcceptanceStatusText.Text = ex.Message;
-                AcceptanceStatusText.Foreground = Bad;
-                AcceptanceButton.IsEnabled = true;
+                MirrorStatusText.Text = ex.Message;
+                MirrorStatusText.Foreground = Bad;
+                MirrorButton.IsEnabled = true;
                 return;
             }
-            AcceptanceButton.IsEnabled = true;
+            MirrorButton.IsEnabled = true;
 
             settings.OrderAcceptanceEnabled = turningOn;
             try { Settings.Save(settings); }
             catch (Exception ex) { ShowStatus("Η αποθήκευση απέτυχε: " + ex.Message, Bad); return; }
-            CustomerDirectory.Log($"acceptance: switched {(turningOn ? "ON (platform AUTO_ACCEPT_ORDERS=false)" : "OFF (platform AUTO_ACCEPT_ORDERS=true)")}");
+            CustomerDirectory.Log($"mirror: switched {(turningOn ? "ON (platform AUTO_ACCEPT_ORDERS=false)" : "OFF (platform AUTO_ACCEPT_ORDERS=true)")}");
 
-            ShowAcceptanceState(settings);
-            Acceptance?.Apply(settings);
-        }
-
-        private async void AcceptOrder_Click(object sender, RoutedEventArgs e)
-        {
-            if ((sender as FrameworkElement)?.DataContext is not PendingOrder o) return;
-            if (License.Blocked(Module.Orders, out string why)) { ShowPending(pending, why, new()); return; }
-            await AnswerAsync(o, accept: true, reason: null);
-        }
-
-        private async void RejectOrder_Click(object sender, RoutedEventArgs e)
-        {
-            if ((sender as FrameworkElement)?.DataContext is not PendingOrder o) return;
-            if (License.Blocked(Module.Orders, out string why)) { ShowPending(pending, why, new()); return; }
-            var ask = new RejectReasonWindow(o) { Owner = Window.GetWindow(this) };
-            if (ask.ShowDialog() != true) return;
-            await AnswerAsync(o, accept: false, reason: ask.Reason);
-        }
-
-        private async Task AnswerAsync(PendingOrder o, bool accept, string? reason)
-        {
-            Settings settings;
-            try { settings = Settings.Load(); }
-            catch (Exception ex) { ShowPending(pending, "Δεν ήταν δυνατή η ανάγνωση των ρυθμίσεων: " + ex.Message, new()); return; }
-
-            AcceptanceStatusText.Text = (accept ? "Αποδοχή " : "Απόρριψη ") + o.Token + "...";
-            try
-            {
-                using var api = new PointToOrderApiClient(settings);
-                if (accept) await OrderAcceptance.AcceptAsync(api, o.Uuid);
-                else await OrderAcceptance.RejectAsync(api, o.Uuid, reason);
-                CustomerDirectory.Log($"acceptance: {o.Token} {(accept ? "ACCEPTED (CLOSED)" : "REJECTED - " + OrderAcceptance.FitRejectReason(reason))} · {o.Customer} · {o.Total:0.00}");
-            }
-            catch (Exception ex)
-            {
-                CustomerDirectory.Log($"acceptance: {o.Token} FAILED - {ex.Message}");
-                ShowPending(pending, $"{o.Token}: {ex.Message}", new());
-                return;
-            }
-            if (Acceptance != null) await Acceptance.RefreshAsync();
+            ShowMirrorState(settings);
+            Mirror?.Apply(settings);
         }
 
         // ---- till orders → PointToOrder, automatic ------------------------------------------
